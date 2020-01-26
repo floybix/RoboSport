@@ -1,27 +1,30 @@
 const nx = 20
 const ny = 20
-const pad = 40
+const pad = {l: 70, r: 70, t: 70, b: 70}
 const n_actions = 5
 const n_agents = 2
 const ground_color = "forestgreen"
 const wall_color = "darkslategrey"
-const team_a_color = "cornflowerblue"
-const team_b_color = "mediumorchid"
-const MODE_PLAN = 0
-const MODE_WAIT = 1
-const MODE_GO = 2
-const MODE_END = 3
+const team_color = {A: "cornflowerblue",
+                    B: "mediumorchid"}
+const MODE_PLAN = 1
+const MODE_WAIT = 2
+const MODE_GO = 3
+const MODE_END = 4
 
 let mode = MODE_WAIT
 let turn = "A"
 let acts_left = 0
 let the_map
 let players = {}
-let scale
+let scale, board_width, board_height
 
 function setup() {
-  createCanvas(500, 500);
-  scale = (width - pad*2) / nx
+  createCanvas(600, 600);
+  frameRate(5)
+  board_height = height - pad.t - pad.b
+  board_width = width - pad.l - pad.r
+  scale = board_width / nx
   colorMode(HSB, 100)
   restart()
 }
@@ -76,18 +79,18 @@ function generateMap() {
 }
 
 function xy_to_grid(x, y) {
-  let ix = floor((x - pad) / scale)
-  let iy = floor((y - pad) / scale)
-  if ((ix > 0) && (iy > 0) && (ix < nx) && (iy < ny)) {
+  let ix = floor((x - pad.l) / scale)
+  let iy = floor((y - pad.l) / scale)
+  if ((ix >= 0) && (iy >= 0) && (ix < nx) && (iy < ny)) {
     return [ix, iy]
   }
 }
 
-function drawAgent(agent) {
+function drawAgent(at) {
   let xi,yi
-  [xi, yi] = agent.at
-  ellipse(pad + (xi+0.5) * scale, 
-          pad + (yi+0.5) * scale,
+  [xi, yi] = at
+  ellipse(pad.l + (xi+0.5) * scale, 
+          pad.l + (yi+0.5) * scale,
           scale-2, scale-2);
 }
 
@@ -97,32 +100,27 @@ function drawMap() {
   strokeWeight(1)
   noStroke()
   fill(ground_color)
-  rect(pad, pad, width-2*pad, height-2*pad)
+  rect(pad.l, pad.t, board_width, board_height)
   // draw walls
-  let scale = (width - pad*2) / nx
   for (let ix = 0; ix < nx; ix++) {
     for (let iy = 0; iy < ny; iy++) {
       if (the_map[ix][iy] == "wall") {
         fill(wall_color)
-        rect(pad + ix * scale,
-             pad + iy * scale, scale, scale)
+        rect(pad.l + ix * scale,
+             pad.l + iy * scale, scale, scale)
       }
     }
   }
   // draw grid
   stroke(color(0,0,0,25))
   for (let ix = 0; ix <= nx; ix++) {
-    line(pad + ix * scale, pad,
-         pad + ix * scale, height-pad)
+    line(pad.l + ix * scale, pad.t,
+         pad.l + ix * scale, height-pad.b)
   }
   for (let iy = 0; iy <= ny; iy++) {
-    line(pad, pad + iy * scale,
-         width-pad, pad + iy * scale)
+    line(pad.l, pad.t + iy * scale,
+         width-pad.r, pad.t + iy * scale)
   }
-}
-
-function drawAgents() {
-  
 }
 
 // GENERICS
@@ -169,13 +167,11 @@ function draw_wait() {
   drawMap()
   // draw players
   stroke("black")
-  fill(team_a_color)
-  for (const agent of players.A.agents) {
-    drawAgent(agent)
-  }
-  fill(team_b_color)
-  for (const agent of players.B.agents) {
-    drawAgent(agent)
+  for (const team of ["A","B"]) {
+    fill(team_color[team])
+    for (const agent of players[team].agents) {
+      drawAgent(agent.at)
+    }
   }
   // draw overlay message
   background(color(0,0,0,50))
@@ -190,48 +186,97 @@ function draw_wait() {
 
 function mouseClicked_wait() {
   mode = MODE_PLAN
+  setup_plan_mode()
 }
 function keyPressed_wait() {
   mode = MODE_PLAN
+  setup_plan_mode()
 }
 
 // PLAN
 
+const PMODE_MOVE = 1
+const PMODE_SCAN = 2
+const PMODE_GRENADE = 3
+
 let sel_agent = 0
+let plan_mode = PMODE_MOVE
+let plan_graph = null
+
+function setup_plan_mode() {
+  let nodes = []
+  for (let ix = 0; ix < nx; ix++) {
+    nodes[ix] = []
+    for (let iy = 0; iy < ny; iy++) {
+      let w = 1
+      if (the_map[ix][iy] == "wall") {
+        w = 0
+      }
+      nodes[ix].push(w)
+    }
+  }
+  // TODO block other agents
+  // let agent = players[turn].agents
+  plan_graph = new Graph(nodes)
+}
+
+function shortest_path(graph, from, to) {
+  let from_node = graph.grid[from[0]][from[1]]
+  let to_node = graph.grid[to[0]][to[1]]
+  path = astar.search(graph, from_node, to_node, {
+    closest: true
+  });
+  return path
+}
 
 function draw_plan() {
   drawMap()
   // draw players
   stroke("black")
-  let opponent
-  if (team = "A") {
-    fill(team_b_color)
-    opponent = players.B
-  } else {
-    fill(team_a_color)
-    opponent = players.A
-  }
+  let opp = (turn == "A") ? "B" : "A"
+  let opponent = players[opp]
+  fill(team_color[opp])
   for (const agent of opponent.agents) {
-    drawAgent(agent)
+    drawAgent(agent.at)
+  }
+  fill(team_color[turn])
+  for (const agent of players[turn].agents) {
+    drawAgent(agent.at)
   }
   // highlight selected agent
+  let agent = players[turn].agents[sel_agent]
   stroke("yellow")
   strokeWeight(2)
   noFill()
-  drawAgent(players[turn].agents[sel_agent])
+  drawAgent(agent.at)
+
+  // preview movement path
+  let targ = xy_to_grid(mouseX, mouseY)
+  if (targ) {
+    let path = shortest_path(plan_graph, agent.at, targ)
+    fill(color("yellow"))
+    noStroke()
+    for (const node of path) {
+      drawAgent([node.x, node.y])
+    }
+  }
   // status display
   noStroke()
   textAlign(LEFT, BASELINE)
   textSize(20)
   fill("white")
   text("Player " + turn + ": " + acts_left + " actions left",
-       10, pad - 10)
+       10, pad.l - 10)
+}
+
+function draw_timeline() {
+
 }
 
 function mouseClicked_plan() {
-  let ix,iy
-  [ix, iy] = xy_to_grid(mouseX, mouseY)
-  if (ix) {
+  let targ = xy_to_grid(mouseX, mouseY)
+  if (targ) {
+    let path = shortest_path(plan_graph, agent.at, targ)
 
   }
 }
