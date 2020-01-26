@@ -1,7 +1,7 @@
 const nx = 20
 const ny = 20
 const pad = {l: 70, r: 70, t: 70, b: 70}
-const n_actions = 5
+const n_actions = 10
 const n_agents = 2
 const ground_color = "forestgreen"
 const wall_color = "darkslategrey"
@@ -11,6 +11,11 @@ const MODE_PLAN = 1
 const MODE_WAIT = 2
 const MODE_GO = 3
 const MODE_END = 4
+
+const ACT_MOVE = 1
+const ACT_SCAN = 2
+const ACT_BOMB = 3
+// actions are like {action: ACT_MOVE, target: [3,3]}
 
 let mode = MODE_WAIT
 let turn = "A"
@@ -197,13 +202,17 @@ function keyPressed_wait() {
 
 const PMODE_MOVE = 1
 const PMODE_SCAN = 2
-const PMODE_GRENADE = 3
+const PMODE_BOMB = 3
 
-let sel_agent = 0
-let plan_mode = PMODE_MOVE
+let plan_step
+let plan_agent
+let plan_mode
 let plan_graph = null
 
 function setup_plan_mode() {
+  plan_step = 0
+  plan_agent = 0
+  plan_mode = PMODE_MOVE
   let nodes = []
   for (let ix = 0; ix < nx; ix++) {
     nodes[ix] = []
@@ -244,43 +253,129 @@ function draw_plan() {
     drawAgent(agent.at)
   }
   // highlight selected agent
-  let agent = players[turn].agents[sel_agent]
+  let agent = players[turn].agents[plan_agent]
   stroke("yellow")
   strokeWeight(2)
   noFill()
   drawAgent(agent.at)
 
-  // preview movement path
+  let acts_left = n_actions - plan_step - 1
   let targ = xy_to_grid(mouseX, mouseY)
+  // preview action
   if (targ) {
-    let path = shortest_path(plan_graph, agent.at, targ)
-    fill(color("yellow"))
-    noStroke()
-    for (const node of path) {
-      drawAgent([node.x, node.y])
+    if (plan_mode == PMODE_MOVE) {
+      let path = shortest_path(plan_graph, agent.at, targ)
+      if (path) {
+        fill(color("yellow"))
+        noStroke()
+        for (let i = 0; i < min(path.length, acts_left); i++) {
+          let node = path[i]
+          drawAgent([node.x, node.y])
+        }
+      }
+    }
+    if (plan_mode == PMODE_SCAN) {
+
     }
   }
-  // status display
+  // draw UI
+  draw_timeline()
+  draw_plan_buttons()
   noStroke()
   textAlign(LEFT, BASELINE)
   textSize(20)
   fill("white")
-  text("Player " + turn + ": " + acts_left + " actions left",
-       10, pad.l - 10)
+  text("Player\n" + turn, 5, pad.t/2)
 }
 
 function draw_timeline() {
+  let time_dx = board_width / n_actions
+  noStroke()
+  for (let i = 0; i < n_actions; i++) {
+    if (i == plan_step) {
+      fill("yellow")
+    } else {
+      fill(color(0,0,75))
+    }
+    rect(pad.l + i*time_dx, pad.t/4, time_dx-2, pad.t/2)
+  }
+  fill("white")
+  strokeWeight(1)
+  textSize(10)
+  textAlign(LEFT)
+  text("first action", pad.l, pad.t/4-2)
+  textAlign(RIGHT)
+  text("last action", width - pad.r, pad.t/4-2)
+}
 
+let plan_buttons = [{mode: PMODE_MOVE,
+                     label: "move"},
+                    {mode: PMODE_SCAN,
+                     label: "scan"},
+                    {mode: PMODE_BOMB,
+                     label: "bomb"}]
+
+function draw_plan_buttons() {
+  let plan_button_width = 100
+  let plan_button_height = 30
+  let y = height - pad.b + 20
+  for (let i = 0; i < plan_buttons.length; i++) {
+    b = plan_buttons[i]
+    b.y = height - pad.b + 20
+    b.x = (i*2+1)*width/8
+    b.width = 100
+    b.height = 30
+  }
+  for (const b of plan_buttons) {
+    if (b.mode == plan_mode) {
+      fill("yellow")
+    } else {
+      fill(color(0,0,75))
+    }
+    rect(b.x, b.y, b.width, b.height)
+    fill("black")
+    textSize(20)
+    textAlign(CENTER)
+    text(b.label, b.x + b.width/2, b.y + b.height - 10)
+  }
 }
 
 function mouseClicked_plan() {
-  let targ = xy_to_grid(mouseX, mouseY)
-  if (targ) {
-    let path = shortest_path(plan_graph, agent.at, targ)
-
+  // which part of the UI was clicked
+  if (mouseX < pad.l) {
+    // left sidebar
+  } else if (mouseX > width - pad.r) {
+    // right sidebar
+  } else if (mouseY < pad.t) {
+    // top panel
+    let time_dx = board_width / n_actions
+    let step = floor((mouseX - pad.l) / time_dx)
+    if ((0 <= step) && (step < n_actions)) {
+      plan_step = step
+    }
+  } else if (mouseY > height - pad.t) {
+    // bottom panel
+    for (const b of plan_buttons) {
+      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+          (b.y < mouseY) && (mouseY < b.y + b.height)) {
+        plan_mode = b.mode
+      }
+    }
+  } else {
+    // board
+    let acts_left = n_actions - plan_step - 1
+    let targ = xy_to_grid(mouseX, mouseY)
+    if (targ) {
+      let path = shortest_path(plan_graph, agent.at, targ)
+    }
   }
 }
 
 function keyPressed_plan() {
-
+  if (key == "ArrowLeft") {
+    plan_step = max(0, plan_step - 1)
+  }
+  if (key == "ArrowRight") {
+    plan_step = min(n_actions-1, plan_step + 1)
+  }
 }
