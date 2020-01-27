@@ -106,7 +106,7 @@ function drawAgent(at) {
   [xi, yi] = at
   ellipse(pad.l + (xi+0.5) * scale, 
           pad.t + (yi+0.5) * scale,
-          scale-2, scale-2);
+          scale-3, scale-3);
 }
 
 function drawScan(source, target) {
@@ -249,6 +249,21 @@ function setup_plan_mode() {
   plan_graph = new Graph(nodes)
 }
 
+function current_plan_locs() {
+  let curr_locs = []
+  for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[turn].agents[ai]
+    curr_locs[ai] = agent.at
+    for (let j = 0; j <= plan_step; j++) {
+      act = agent.actions[j]
+      if (act && act.action == ACT_MOVE) {
+        curr_locs[ai] = act.target
+      }
+    }
+  }
+  return curr_locs
+}
+
 function shortest_path(graph, source, target) {
   let source_node = graph.grid[source[0]][source[1]]
   let target_node = graph.grid[target[0]][target[1]]
@@ -284,32 +299,48 @@ function line_of_sight(source, target) {
 
 function draw_plan() {
   drawMap()
-  // draw players
+  // draw opponent
   stroke("black")
+  strokeWeight(1)
   let opp = (turn == "A") ? "B" : "A"
   let opponent = players[opp]
   fill(team_color[opp])
   for (const agent of opponent.agents) {
     drawAgent(agent.at)
   }
-  fill(team_color[turn])
-  for (const agent of players[turn].agents) {
+  // figure out current locations of agents
+  let curr_locs = current_plan_locs()
+  // draw agent traces up to this planning step
+  let trace_color = color(team_color[turn])
+  trace_color.setAlpha(50)
+  fill(trace_color)
+  for (let ai = 0; ai < n_agents; ai++) {
+    stroke((ai == plan_agent) ? "yellow" : "black")
+    let agent = players[turn].agents[ai]
     drawAgent(agent.at)
+    for (let j = 0; j <= plan_step; j++) {
+      let act = agent.actions[j]
+      if (act && act.action == ACT_MOVE) {
+        drawAgent(act.target)
+      }
+    }
   }
-  // highlight selected agent
+  fill(team_color[turn])
+  strokeWeight(3)
+  for (let ai = 0; ai < n_agents; ai++) {
+    stroke((ai == plan_agent) ? "yellow" : "black")
+    drawAgent(curr_locs[ai])
+  }
+  // status of selected agent
+  let curr_loc = curr_locs[plan_agent]
   let agent = players[turn].agents[plan_agent]
-  stroke("yellow")
-  strokeWeight(2)
-  noFill()
-  drawAgent(agent.at)
-
   let acts_left = n_actions - plan_step - 1
   let targ = xy_to_grid(mouseX, mouseY)
-  let self_click = targ ? (targ.toString() == agent.at.toString()) : null
+  let self_click = targ ? (targ.toString() == curr_loc.toString()) : null
   // preview action
   if (targ && !self_click && (acts_left > 0)) {
     if (plan_mode == PMODE_MOVE) {
-      let path = shortest_path(plan_graph, agent.at, targ)
+      let path = shortest_path(plan_graph, curr_loc, targ)
       if (path) {
         fill(color("yellow"))
         noStroke()
@@ -319,11 +350,11 @@ function draw_plan() {
       }
     }
     if (plan_mode == PMODE_SCAN) {
-      let sight_to = line_of_sight(agent.at, targ)
+      let sight_to = line_of_sight(curr_loc, targ)
       if (sight_to) {
         stroke(color("yellow"))
         strokeWeight(5)
-        drawScan(agent.at, sight_to)
+        drawScan(curr_loc, sight_to)
       }
     }
   }
@@ -364,9 +395,9 @@ function draw_timeline(agent) {
   strokeWeight(1)
   textSize(10)
   textAlign(LEFT, BASELINE)
-  text("first action", pad.l, pad.t/4-2)
+  text("first action (←)", pad.l, pad.t/4-2)
   textAlign(RIGHT)
-  text("last action", width - pad.r, pad.t/4-2)
+  text("(→) last action", width - pad.r, pad.t/4-2)
 }
 
 let plan_buttons = [{mode: PMODE_MOVE,
@@ -441,11 +472,15 @@ function mouseClicked_plan() {
 }
 
 function plan_action(targ) {
+  let curr_locs = current_plan_locs()
+  let curr_loc = curr_locs[plan_agent]
   let agent = players[turn].agents[plan_agent]
   let acts_left = n_actions - plan_step
-  //let self_click = (targ.toString == agent.at.toString)
+  let self_click = (targ.toString == curr_loc.toString)
+  // TODO
+
   if (plan_mode == PMODE_MOVE) {
-    let path = shortest_path(plan_graph, agent.at, targ)
+    let path = shortest_path(plan_graph, curr_loc, targ)
     if (!path) return
     for (let i = 0; i < acts_left; i++) {
       let act = null
@@ -457,7 +492,7 @@ function plan_action(targ) {
     plan_step = min(n_actions-1, plan_step + path.length + 1)
   }
   if (plan_mode == PMODE_SCAN) {
-    let sight_to = line_of_sight(agent.at, targ)
+    let sight_to = line_of_sight(curr_loc, targ)
     if (!sight_to) return
     for (let i = 0; i < acts_left; i++) {
       let act = {action: ACT_SCAN, target: sight_to}
