@@ -1,6 +1,6 @@
 const nx = 20
 const ny = 20
-const pad = {l: 70, r: 70, t: 70, b: 70}
+const pad = {l: 100, r: 20, t: 70, b: 50}
 const n_actions = 10
 const n_agents = 2
 const ground_color = "forestgreen"
@@ -27,9 +27,17 @@ let scale, board_width, board_height
 function setup() {
   createCanvas(600, 600);
   frameRate(5)
-  board_height = height - pad.t - pad.b
-  board_width = width - pad.l - pad.r
-  scale = board_width / nx
+  let free_height = height - pad.t - pad.b
+  let free_width = width - pad.l - pad.r
+  if (free_width < free_height) {
+    board_width = free_width
+    scale = board_width / nx
+    board_height = ny * scale
+  } else {
+    board_height = free_height
+    scale = board_height / ny
+    board_width = nx * scale
+  }
   colorMode(HSB, 100)
   restart()
 }
@@ -124,7 +132,7 @@ function drawMap() {
       if (the_map[ix][iy] == "wall") {
         fill(wall_color)
         rect(pad.l + ix * scale,
-             pad.l + iy * scale, scale, scale)
+             pad.t + iy * scale, scale, scale)
       }
     }
   }
@@ -132,11 +140,11 @@ function drawMap() {
   stroke(color(0,0,0,25))
   for (let ix = 0; ix <= nx; ix++) {
     line(pad.l + ix * scale, pad.t,
-         pad.l + ix * scale, height-pad.b)
+         pad.l + ix * scale, pad.t + board_height)
   }
   for (let iy = 0; iy <= ny; iy++) {
-    line(pad.l, pad.t + iy * scale,
-         width-pad.r, pad.t + iy * scale)
+    line(pad.l,               pad.t + iy * scale,
+         pad.l + board_width, pad.t + iy * scale)
   }
 }
 
@@ -321,19 +329,16 @@ function draw_plan() {
   }
   // draw UI
   draw_timeline(agent)
-  draw_plan_buttons()
-  noStroke()
-  textAlign(LEFT, BASELINE)
-  textSize(20)
-  fill("white")
-  text("Player\n" + turn, 5, pad.t/2)
+  draw_plan_controls()
+  // draw status messages
+  let y = height - pad.b/2
+  textAlign(CENTER, CENTER)
+  textSize(30)
+  fill("yellow")
+  stroke("black")
+  strokeWeight(3)
   if (acts_left == 0) {
-    textAlign(CENTER, CENTER)
-    textSize(30)
-    fill("yellow")
-    stroke("black")
-    strokeWeight(3)
-    text("end of turn", width/2, height/2)
+    text("end of turn", width/2, y)
   }
 }
 
@@ -371,19 +376,17 @@ let plan_buttons = [{mode: PMODE_MOVE,
                     {mode: PMODE_BOMB,
                      label: ACT_BOMB + " bomb"}]
 
-function draw_plan_buttons() {
-  let plan_button_width = 110
-  let plan_button_height = 30
-  let y = height - pad.b + 20
+function draw_plan_controls() {
+  // set up buttons
   for (let i = 0; i < plan_buttons.length; i++) {
     b = plan_buttons[i]
-    b.y = height - pad.b + 20
-    b.x = (i*2+1)*width/8
-    b.width = 100
+    b.width = pad.l - 16
     b.height = 30
+    b.y = pad.t + i * b.height * 2
+    b.x = 8
   }
   textAlign(CENTER, CENTER)
-  textSize(20)
+  textSize(18)
   for (const b of plan_buttons) {
     if (b.mode == plan_mode) {
       fill("yellow")
@@ -394,12 +397,24 @@ function draw_plan_buttons() {
     fill("black")
     text(b.label, b.x + b.width/2, b.y + b.height/2)
   }
+  // title
+  noStroke()
+  textAlign(LEFT, BASELINE)
+  textSize(16)
+  fill("white")
+  text("Player " + turn + "\n→ agent " + (plan_agent+1), 5, 20)
 }
 
 function mouseClicked_plan() {
   // which part of the UI was clicked
   if (mouseX < pad.l) {
     // left sidebar
+    for (const b of plan_buttons) {
+      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+          (b.y < mouseY) && (mouseY < b.y + b.height)) {
+        plan_mode = b.mode
+      }
+    }
   } else if (mouseX > width - pad.r) {
     // right sidebar
   } else if (mouseY < pad.t) {
@@ -416,12 +431,6 @@ function mouseClicked_plan() {
     }
   } else if (mouseY > height - pad.t) {
     // bottom panel
-    for (const b of plan_buttons) {
-      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
-          (b.y < mouseY) && (mouseY < b.y + b.height)) {
-        plan_mode = b.mode
-      }
-    }
   } else {
     // board
     let targ = xy_to_grid(mouseX, mouseY)
@@ -445,7 +454,7 @@ function plan_action(targ) {
       }
       agent.actions[plan_step + i] = act
     }
-    plan_step = min(n_actions-1, plan_step + path.length)
+    plan_step = min(n_actions-1, plan_step + path.length + 1)
   }
   if (plan_mode == PMODE_SCAN) {
     let sight_to = line_of_sight(agent.at, targ)
