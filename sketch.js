@@ -15,7 +15,7 @@ const MODE_END = 4
 const ACT_MOVE = "👣"
 const ACT_SCAN = "🔊"
 const ACT_BOMB = "💣"
-// actions are like {action: ACT_MOVE, target: [3,10], offset: [-1,0]}
+// actions are like {action: ACT_MOVE, target: [3,10]}
 
 let mode = MODE_WAIT
 let turn = "A"
@@ -40,6 +40,14 @@ function setup() {
   }
   colorMode(HSB, 100)
   restart()
+}
+
+function pxX(xi) {
+  return pad.l + (xi+0.5) * scale
+}
+
+function pxY(yi) {
+  return pad.t + (yi+0.5) * scale
 }
 
 function newAgent(loc) {
@@ -211,11 +219,11 @@ function draw_wait() {
 
 function mouseClicked_wait() {
   mode = MODE_PLAN
-  setup_plan_mode()
+  init_plan_mode()
 }
 function keyPressed_wait() {
   mode = MODE_PLAN
-  setup_plan_mode()
+  init_plan_mode()
 }
 
 // PLAN
@@ -227,25 +235,30 @@ const PMODE_BOMB = 3
 let plan_step
 let plan_agent
 let plan_mode
-let plan_graph = null
+let plan_graph
 
-function setup_plan_mode() {
+function init_plan_mode() {
   plan_step = 0
   plan_agent = 0
   plan_mode = PMODE_MOVE
+  generate_plan_graph()
+}
+
+function generate_plan_graph() {
+  const blocked = 0
+  const open = 1
   let nodes = []
+  // open spaces and walls
   for (let ix = 0; ix < nx; ix++) {
     nodes[ix] = []
     for (let iy = 0; iy < ny; iy++) {
-      let w = 1
+      let w = open
       if (the_map[ix][iy] == "wall") {
-        w = 0
+        w = blocked
       }
       nodes[ix].push(w)
     }
   }
-  // TODO block other agents
-  // let agent = players[turn].agents
   plan_graph = new Graph(nodes)
 }
 
@@ -297,6 +310,16 @@ function line_of_sight(source, target) {
   return end
 }
 
+function clip_to_board() {
+  let ctx = drawingContext
+  ctx.beginPath()
+  ctx.moveTo(pxX(-0.5), pxY(-0.5))
+  ctx.lineTo(pxX(nx-0.5), pxY(-0.5))
+  ctx.lineTo(pxX(nx-0.5), pxY(ny-0.5))
+  ctx.lineTo(pxX(-0.5), pxY(ny-0.5))
+  ctx.clip()
+}
+
 function draw_plan() {
   drawMap()
   // draw opponent
@@ -308,12 +331,28 @@ function draw_plan() {
   for (const agent of opponent.agents) {
     drawAgent(agent.at)
   }
+  // draw cone of possible locations
+  push()
+  clip_to_board()
+  noFill()
+  stroke(team_color[opp])
+  strokeWeight(3)
+  for (const agent of opponent.agents) {
+    let xi,yi
+    [xi,yi] = agent.at
+    let d = plan_step + 0.5
+    beginShape()
+    vertex(pxX(xi - d), pxY(yi))
+    vertex(pxX(xi), pxY(yi - d))
+    vertex(pxX(xi + d), pxY(yi))
+    vertex(pxX(xi), pxY(yi + d))
+    endShape(CLOSE)
+  }
+  pop()
   // figure out current locations of agents
   let curr_locs = current_plan_locs()
   // draw agent traces up to this planning step
-  let trace_color = color(team_color[turn])
-  trace_color.setAlpha(50)
-  fill(trace_color)
+  fill(team_color[turn])
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
     let agent = players[turn].agents[ai]
@@ -325,7 +364,6 @@ function draw_plan() {
       }
     }
   }
-  fill(team_color[turn])
   strokeWeight(3)
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
@@ -362,15 +400,27 @@ function draw_plan() {
   draw_timeline(agent)
   draw_plan_controls()
   // draw status messages
+  let curr_done = false
+  let all_done = true
+  for (let ai = 0; ai < n_agents; ai++) {
+    let idone = players[turn].agents[ai].actions[n_actions-1]
+    if (ai == plan_agent) curr_done = idone
+    all_done = all_done && idone
+  }
   let y = height - pad.b/2
   textAlign(CENTER, CENTER)
-  textSize(30)
+  textSize(25)
   fill("yellow")
   stroke("black")
-  strokeWeight(3)
-  if (acts_left == 0) {
-    text("end of turn", width/2, y)
+  let msg = ""
+  if (all_done) {
+    msg = "all agents fully programmed."
+  } else if (curr_done) {
+    msg = "this agent done. now do the next agent."
+  } else {
+    msg = "choose actions."
   }
+  text(msg, width/2, y)
 }
 
 function draw_timeline(agent) {
@@ -394,10 +444,12 @@ function draw_timeline(agent) {
   fill("white")
   strokeWeight(1)
   textSize(10)
-  textAlign(LEFT, BASELINE)
-  text("first action (←)", pad.l, pad.t/4-2)
+  textAlign(CENTER, BASELINE)
+  text("← arrow keys to step →", pad.l + board_width/2, pad.t/4-2)
+  textAlign(LEFT)
+  text("first action", pad.l, pad.t/4-2)
   textAlign(RIGHT)
-  text("(→) last action", width - pad.r, pad.t/4-2)
+  text("last action", width - pad.r, pad.t/4-2)
 }
 
 let plan_buttons = [{mode: PMODE_MOVE,
