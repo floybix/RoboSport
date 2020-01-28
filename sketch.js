@@ -267,7 +267,7 @@ function current_plan_locs() {
   for (let ai = 0; ai < n_agents; ai++) {
     let agent = players[turn].agents[ai]
     curr_locs[ai] = agent.at
-    for (let j = 0; j <= plan_step; j++) {
+    for (let j = 0; j < plan_step; j++) {
       act = agent.actions[j]
       if (act && act.action == ACT_MOVE) {
         curr_locs[ai] = act.target
@@ -356,11 +356,17 @@ function draw_plan() {
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
     let agent = players[turn].agents[ai]
-    drawAgent(agent.at)
-    for (let j = 0; j <= plan_step; j++) {
+    let loc = agent.at
+    drawAgent(loc)
+    for (let j = 0; j < plan_step; j++) {
       let act = agent.actions[j]
       if (act && act.action == ACT_MOVE) {
-        drawAgent(act.target)
+        loc = act.target
+        drawAgent(loc)
+      }
+      if (act && act.action == ACT_SCAN) {
+        let sight_to = line_of_sight(loc, act.target)
+        drawScan(loc, sight_to)
       }
     }
   }
@@ -372,7 +378,7 @@ function draw_plan() {
   // status of selected agent
   let curr_loc = curr_locs[plan_agent]
   let agent = players[turn].agents[plan_agent]
-  let acts_left = n_actions - plan_step - 1
+  let acts_left = n_actions - plan_step
   let targ = xy_to_grid(mouseX, mouseY)
   let self_click = targ ? (targ.toString() == curr_loc.toString()) : null
   // preview action
@@ -409,14 +415,14 @@ function draw_plan() {
   }
   let y = height - pad.b/2
   textAlign(CENTER, CENTER)
-  textSize(25)
+  textSize(16)
   fill("yellow")
-  stroke("black")
+  noStroke()
   let msg = ""
   if (all_done) {
     msg = "all agents fully programmed."
   } else if (curr_done) {
-    msg = "this agent done. now do the next agent."
+    msg = "this agent done. (others remaining)"
   } else {
     msg = "choose actions."
   }
@@ -424,11 +430,11 @@ function draw_plan() {
 }
 
 function draw_timeline(agent) {
-  let time_dx = board_width / n_actions
+  let time_dx = board_width / (n_actions+1)
   noStroke()
   textAlign(CENTER, CENTER)
   textSize(25)
-  for (let i = 0; i < n_actions; i++) {
+  for (let i = 0; i <= n_actions; i++) {
     if (i == plan_step) {
       fill("yellow")
     } else {
@@ -436,9 +442,11 @@ function draw_timeline(agent) {
     }
     let x = pad.l + i*time_dx
     rect(x, pad.t/4, time_dx-2, pad.t/2)
-    let act = agent.actions[i]
-    if (act) {
-      text(act.action, x + 0.5*time_dx, pad.t/2)
+    if (i > 0) {
+      let act = agent.actions[i-1]
+      if (act) {
+        text(act.action, x + 0.5*time_dx, pad.t/2)
+      }
     }
   }
   fill("white")
@@ -447,7 +455,8 @@ function draw_timeline(agent) {
   textAlign(CENTER, BASELINE)
   text("← arrow keys to step →", pad.l + board_width/2, pad.t/4-2)
   textAlign(LEFT)
-  text("first action", pad.l, pad.t/4-2)
+  text("start", pad.l, pad.t/4-2)
+  text("first action", pad.l + time_dx, pad.t/4-2)
   textAlign(RIGHT)
   text("last action", width - pad.r, pad.t/4-2)
 }
@@ -502,13 +511,13 @@ function mouseClicked_plan() {
     // right sidebar
   } else if (mouseY < pad.t) {
     // top panel
-    let time_dx = board_width / n_actions
+    let time_dx = board_width / (n_actions+1)
     let step = floor((mouseX - pad.l) / time_dx)
-    if ((0 <= step) && (step < n_actions)) {
+    if ((0 <= step) && (step <= n_actions)) {
       plan_step = step
       // constrain to programmed steps or one after
       let agent = players[turn].agents[plan_agent]
-      while ((plan_step > 0) && (!agent.actions[plan_step-1])) {
+      while ((plan_step > 0) && (!agent.actions[plan_step])) {
         plan_step -= 1
       }
     }
@@ -541,7 +550,7 @@ function plan_action(targ) {
       }
       agent.actions[plan_step + i] = act
     }
-    plan_step = min(n_actions-1, plan_step + path.length + 1)
+    plan_step = min(n_actions, plan_step + path.length)
   }
   if (plan_mode == PMODE_SCAN) {
     let sight_to = line_of_sight(curr_loc, targ)
@@ -550,7 +559,7 @@ function plan_action(targ) {
       let act = {action: ACT_SCAN, target: sight_to}
       agent.actions[plan_step + i] = act
     }
-    plan_step = min(n_actions-1, plan_step + 1)
+    plan_step = min(n_actions, plan_step + 1)
   }
 }
 
@@ -559,7 +568,7 @@ function keyPressed_plan() {
     plan_step = max(0, plan_step - 1)
   }
   if (key == "ArrowRight") {
-    if (plan_step == n_actions-1) return
+    if (plan_step == n_actions) return
     let agent = players[turn].agents[plan_agent]
     if (agent.actions[plan_step]) {
       plan_step += 1
