@@ -3,23 +3,26 @@ const ny = 20
 const pad = { l: 100, r: 20, t: 70, b: 50 }
 const n_actions = 10
 const n_agents = 2
+const bomb_range = 5
+const bomb_radius = 1
 const ground_color = "forestgreen"
 const wall_color = "darkslategrey"
 const team_color = {
   A: "cornflowerblue",
   B: "mediumorchid"
 }
-const MODE_PLAN = 1
-const MODE_WAIT = 2
-const MODE_GO = 3
-const MODE_END = 4
+const MODE_WAIT_PLAN = 1
+const MODE_PLAN = 2
+const MODE_WAIT_GO = 3
+const MODE_GO = 4
+const MODE_END = 5
 
 const ACT_MOVE = "👣"
 const ACT_SCAN = "🔊"
 const ACT_BOMB = "💣"
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
-let mode = MODE_WAIT
+let mode = MODE_WAIT_PLAN
 let turn = "A"
 let the_map
 let players = {}
@@ -115,22 +118,38 @@ function xy_to_grid(x, y) {
   }
 }
 
+function clip_to_board() {
+  let ctx = drawingContext
+  ctx.beginPath()
+  ctx.moveTo(pxX(-0.5), pxY(-0.5))
+  ctx.lineTo(pxX(nx - 0.5), pxY(-0.5))
+  ctx.lineTo(pxX(nx - 0.5), pxY(ny - 0.5))
+  ctx.lineTo(pxX(-0.5), pxY(ny - 0.5))
+  ctx.clip()
+}
+
 function drawAgent(at) {
   let xi, yi
   [xi, yi] = at
-  ellipse(pad.l + (xi + 0.5) * scale,
-    pad.t + (yi + 0.5) * scale,
-    scale - 3, scale - 3);
+  ellipse(pxX(xi), pxY(yi), scale - 3, scale - 3)
 }
 
 function drawScan(source, target) {
   let sxi, syi, txi, tyi;
   [sxi, syi] = source;
   [txi, tyi] = target;
-  line(pad.l + (sxi + 0.5) * scale,
-    pad.t + (syi + 0.5) * scale,
-    pad.l + (txi + 0.5) * scale,
-    pad.t + (tyi + 0.5) * scale);
+  line(pxX(sxi), pxY(syi), pxX(txi), pxY(tyi))
+}
+
+function drawBombAction(at) {
+  let xi, yi
+  [xi, yi] = at
+  push()
+  clip_to_board()
+  ellipse(pxX(xi), pxY(yi),
+    scale + 2 * bomb_radius * scale,
+    scale + 2 * bomb_radius * scale)
+  pop()
 }
 
 function drawMap() {
@@ -165,10 +184,12 @@ function drawMap() {
 // GENERICS
 
 function draw() {
-  if (mode == MODE_PLAN) {
+  if (mode == MODE_WAIT_PLAN) {
+    draw_wait_plan()
+  } else if (mode == MODE_PLAN) {
     draw_plan()
-  } else if (mode == MODE_WAIT) {
-    draw_wait()
+  } else if (mode == MODE_WAIT_GO) {
+    draw_wait_go()
   } else if (mode == MODE_GO) {
     draw_go()
   } else if (mode == MODE_END) {
@@ -177,10 +198,12 @@ function draw() {
 }
 
 function mouseClicked() {
-  if (mode == MODE_PLAN) {
+  if (mode == MODE_WAIT_PLAN) {
+    mouseClicked_wait_plan()
+  } else if (mode == MODE_PLAN) {
     mouseClicked_plan()
-  } else if (mode == MODE_WAIT) {
-    mouseClicked_wait()
+  } else if (mode == MODE_WAIT_GO) {
+    mouseClicked_wait_go()
   } else if (mode == MODE_GO) {
     mouseClicked_go()
   } else if (mode == MODE_END) {
@@ -200,9 +223,9 @@ function keyPressed() {
   }
 }
 
-// WAIT
+// WAIT_PLAN
 
-function draw_wait() {
+function draw_wait_plan() {
   drawMap()
   // draw players
   stroke("black")
@@ -223,11 +246,11 @@ function draw_wait() {
   text("(click)", width / 2, height / 2 + 150)
 }
 
-function mouseClicked_wait() {
+function mouseClicked_wait_plan() {
   mode = MODE_PLAN
   init_plan_mode()
 }
-function keyPressed_wait() {
+function keyPressed_wait_plan() {
   mode = MODE_PLAN
   init_plan_mode()
 }
@@ -316,16 +339,6 @@ function line_of_sight(source, target) {
   return end
 }
 
-function clip_to_board() {
-  let ctx = drawingContext
-  ctx.beginPath()
-  ctx.moveTo(pxX(-0.5), pxY(-0.5))
-  ctx.lineTo(pxX(nx - 0.5), pxY(-0.5))
-  ctx.lineTo(pxX(nx - 0.5), pxY(ny - 0.5))
-  ctx.lineTo(pxX(-0.5), pxY(ny - 0.5))
-  ctx.clip()
-}
-
 function draw_plan() {
   drawMap()
   // draw opponent
@@ -357,22 +370,28 @@ function draw_plan() {
   pop()
   // figure out current locations of agents
   let curr_locs = current_plan_locs()
-  // draw agent traces up to this planning step
-  fill(team_color[turn])
+  // draw action traces up to this planning step
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
     let agent = players[turn].agents[ai]
     let loc = agent.at
+    fill(team_color[turn])
     drawAgent(loc)
     for (let j = 0; j < plan_step; j++) {
       let act = agent.actions[j]
-      if (act && act.action == ACT_MOVE) {
+      if (!act) break
+      if (act.action == ACT_MOVE) {
         loc = act.target
+        fill(team_color[turn])
         drawAgent(loc)
       }
-      if (act && act.action == ACT_SCAN) {
+      if (act.action == ACT_SCAN) {
         let sight_to = line_of_sight(loc, act.target)
         drawScan(loc, sight_to)
+      }
+      if (act.action == ACT_BOMB) {
+        noFill()
+        drawBombAction(act.target)
       }
     }
   }
@@ -383,6 +402,8 @@ function draw_plan() {
   }
   // status of selected agent
   let curr_loc = curr_locs[plan_agent]
+  let xi = curr_loc[0]
+  let yi = curr_loc[1]
   let agent = players[turn].agents[plan_agent]
   let acts_left = n_actions - plan_step
   let targ = xy_to_grid(mouseX, mouseY)
@@ -393,11 +414,13 @@ function draw_plan() {
     }
   }
   // preview action
+  let highlight = color("yellow")
+  highlight.setAlpha(50)
   if (targ && !on_agent && (acts_left > 0)) {
     if (plan_mode == PMODE_MOVE) {
       let path = shortest_path(plan_graph, curr_loc, targ)
       if (path) {
-        fill(color("yellow"))
+        fill(highlight)
         noStroke()
         for (let i = 0; i < min(path.length, acts_left); i++) {
           drawAgent(path[i])
@@ -410,6 +433,29 @@ function draw_plan() {
         stroke(color("yellow"))
         strokeWeight(5)
         drawScan(curr_loc, sight_to)
+      }
+    }
+    if (plan_mode == PMODE_BOMB) {
+      // draw valid range on board
+      push()
+      clip_to_board()
+      stroke("white")
+      noFill()
+      ellipse(pxX(xi), pxY(yi),
+        2 * scale * (bomb_range + 0.5), 2 * scale * (bomb_range + 0.5))
+      pop()
+      // draw bomb blast radius
+      fill(highlight)
+      noStroke()
+      // within range
+      if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
+        if (the_map[targ[0]][targ[1]] == "wall") {
+          text("🚫", mouseX, mouseY)
+        } else {
+          drawBombAction(targ)
+        }
+      } else {
+        text("OUT OF RANGE", mouseX, mouseY)
       }
     }
   }
@@ -431,9 +477,9 @@ function draw_plan() {
   noStroke()
   let msg = ""
   if (all_done) {
-    msg = "all agents fully programmed."
+    msg = "all agents fully programmed. ✅ click here to end turn."
   } else if (curr_done) {
-    msg = "this agent done. (others remaining)"
+    msg = "this agent fully programmed. (others remaining)"
   } else {
     msg = "choose actions."
   }
@@ -495,7 +541,7 @@ function draw_plan_controls() {
     b.x = 8
   }
   textAlign(CENTER, CENTER)
-  textSize(18)
+  textSize(16)
   for (const b of plan_buttons) {
     if (b.mode == plan_mode) {
       fill("yellow")
@@ -532,14 +578,28 @@ function mouseClicked_plan() {
     let step = floor((mouseX - pad.l) / time_dx)
     if ((0 <= step) && (step <= n_actions)) {
       plan_step = step
-      // constrain to programmed steps or one after
+      // constrain to programmed steps
       let agent = players[turn].agents[plan_agent]
-      while ((plan_step > 0) && (!agent.actions[plan_step])) {
+      while ((plan_step > 0) && !agent.actions[plan_step - 1]) {
         plan_step -= 1
       }
     }
   } else if (mouseY > height - pad.t) {
     // bottom panel
+    let all_done = true
+    for (let ai = 0; ai < n_agents; ai++) {
+      let idone = players[turn].agents[ai].actions[n_actions - 1]
+      all_done = all_done && idone
+    }
+    if (all_done) {
+      if (turn == "A") {
+        turn = "B"
+        mode = MODE_WAIT_PLAN
+      } else {
+        turn = "A"
+        mode = MODE_WAIT_GO
+      }
+    }
   } else {
     // board
     let targ = xy_to_grid(mouseX, mouseY)
@@ -548,13 +608,14 @@ function mouseClicked_plan() {
     for (let ai = 0; ai < n_agents; ai++) {
       if (targ.toString() == curr_locs[ai].toString()) {
         plan_agent = ai
-        if (!players[turn].agents[ai].actions[plan_step]) {
-          plan_step = 0
+        actions = players[turn].agents[ai].actions
+        while ((plan_step > 0) && !actions[plan_step - 1]) {
+          plan_step -= 1
         }
         return
       }
     }
-    if (targ && (plan_step < n_actions - 1)) {
+    if (targ && (plan_step < n_actions)) {
       plan_action(targ)
     }
   }
@@ -587,6 +648,17 @@ function plan_action(targ) {
     }
     plan_step = min(n_actions, plan_step + 1)
   }
+  if (plan_mode == PMODE_BOMB) {
+    let xi = curr_loc[0]
+    let yi = curr_loc[1]
+    if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
+      if (the_map[targ[0]][targ[1]] != "wall") {
+        let act = { action: ACT_BOMB, target: targ }
+        agent.actions[plan_step] = act
+        plan_step = min(n_actions, plan_step + 1)
+      }
+    }
+  }
 }
 
 function keyPressed_plan() {
@@ -600,4 +672,29 @@ function keyPressed_plan() {
       plan_step += 1
     }
   }
+}
+
+// WAIT_GO
+
+function draw_wait_go() {
+  drawMap()
+  // draw players
+  stroke("black")
+  for (const team of ["A", "B"]) {
+    fill(team_color[team])
+    for (const agent of players[team].agents) {
+      drawAgent(agent.at)
+    }
+  }
+  // draw overlay message
+  background(color(0, 0, 0, 50))
+  textAlign(CENTER, CENTER)
+  fill("white")
+  textSize(30)
+  text("All teams ready.", width / 2, height / 2)
+  text("(click)", width / 2, height / 2 + 50)
+}
+
+function mouseClicked_wait_go() {
+  mode = MODE_GO
 }
