@@ -1,3 +1,12 @@
+
+const MULTI_HOTSEAT = 1
+const MULTI_REMOTE = 2
+let multiplayer = null
+let nick = "Anon"
+let peer = null
+let is_host = true
+let peer_conn = null
+
 const nx = 20
 const ny = 20
 const pad = { l: 100, r: 20, t: 70, b: 50 }
@@ -11,6 +20,7 @@ const team_color = {
   A: "cornflowerblue",
   B: "mediumorchid"
 }
+const MODE_CONFIG = -1
 const MODE_WAIT_PLAN = 1
 const MODE_PLAN = 2
 const MODE_WAIT_GO = 3
@@ -22,7 +32,7 @@ const ACT_SCAN = "🔊"
 const ACT_BOMB = "💣"
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
-let mode = MODE_WAIT_PLAN
+let mode = MODE_CONFIG
 let turn = "A"
 let the_map
 let players = {}
@@ -184,7 +194,9 @@ function drawMap() {
 // GENERICS
 
 function draw() {
-  if (mode == MODE_WAIT_PLAN) {
+  if (mode == MODE_CONFIG) {
+    draw_config()
+  } else if (mode == MODE_WAIT_PLAN) {
     draw_wait_plan()
   } else if (mode == MODE_PLAN) {
     draw_plan()
@@ -198,7 +210,9 @@ function draw() {
 }
 
 function mouseClicked() {
-  if (mode == MODE_WAIT_PLAN) {
+  if (mode == MODE_CONFIG) {
+    mouseClicked_config()
+  } else if (mode == MODE_WAIT_PLAN) {
     mouseClicked_wait_plan()
   } else if (mode == MODE_PLAN) {
     mouseClicked_plan()
@@ -212,7 +226,9 @@ function mouseClicked() {
 }
 
 function keyPressed() {
-  if (mode == MODE_PLAN) {
+  if (mode == MODE_CONFIG) {
+    keyPressed_config()
+  } else if (mode == MODE_PLAN) {
     keyPressed_plan()
   } else if (mode == MODE_WAIT) {
     keyPressed_wait()
@@ -221,6 +237,226 @@ function keyPressed() {
   } else if (mode == MODE_END) {
     keyPressed_end()
   }
+}
+
+// NETWORK COMMS
+
+let chat_box
+let chat_log
+
+function initChat() {
+  chat_box = createInput()
+  chat_box.size(100)
+  chat_box.style("display", "block")
+  chat_box.style("width", "90%")
+  chat_box.style("border", "1px solid black")
+  chat_box.id("chat_box")
+  chat_log = createDiv()
+  chat_log.style("resize", "both")
+  document.getElementById("chat_box").addEventListener('change',
+    (event) => {
+      let txt = chat_box.value()
+      console.log(txt)
+      if (txt.trim().length > 0) {
+        txt = nick + ": " + txt
+        let msg = {
+          type: "chat",
+          text: txt
+        }
+        chat_log.html('<p><b>' + msg.text + '</b></p>' + chat_log.html())
+        peer_conn.send(msg)
+        chat_box.value("")
+      }
+    })
+}
+
+function recvMsg(msg) {
+  if (msg.type == "init") {
+    the_map = msg.the_map
+    turn = msg.turn
+    mode = msg.mode
+    removeElements()
+    initChat()
+
+  } else if (msg.type == "chat") {
+    chat_log.html('<p>' + msg.text + '</p>' + chat_log.html())
+  }
+}
+
+function connClosed() {
+  chat_log.html('<p><i>' + "CONNECTION CLOSED" + '</i></p>', true)
+}
+
+// CONFIG
+
+let config_buttons =
+  [{
+    label: "hotseat",
+    multi: MULTI_HOTSEAT,
+    host: true,
+    desc: "take turns using one screen"
+  },
+  {
+    label: "remote (host)",
+    multi: MULTI_REMOTE,
+    host: true,
+    desc: "connect to another computer (start a game)"
+  },
+  {
+    label: "remote (client)",
+    multi: MULTI_REMOTE,
+    host: false,
+    desc: "connect to another computer (join a game)"
+  }]
+
+function draw_config() {
+  // set up buttons
+  let nb = config_buttons.length
+  for (let i = 0; i < config_buttons.length; i++) {
+    b = config_buttons[i]
+    b.width = 140
+    b.height = 30
+    b.y = height / 2 + i * 2 * b.height
+    b.x = 60
+  }
+  background(wall_color);
+  textAlign(CENTER, CENTER)
+  fill("white")
+  textSize(40)
+  text("RoboSport", width / 2, height * 0.15)
+  textSize(16)
+  text("a minimal clone", width / 2, height * 0.15 + 50)
+  textAlign(CENTER, CENTER)
+  textSize(16)
+  if (!multiplayer) {
+    for (const b of config_buttons) {
+      fill(color(0, 0, 75))
+      rect(b.x, b.y, b.width, b.height)
+      fill("black")
+      textAlign(CENTER, CENTER)
+      text(b.label, b.x + b.width / 2, b.y + b.height / 2)
+      fill("white")
+      textAlign(LEFT, CENTER)
+      text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
+    }
+  } else if (multiplayer == MULTI_HOTSEAT) {
+    fill("yellow")
+    text("hotseat", width / 2, height / 2 + 100)
+
+  } else if (multiplayer == MULTI_REMOTE) {
+    fill("yellow")
+    text("remote", width / 2, height / 2 + 100)
+
+  }
+}
+
+function setup_multi() {
+  if (multiplayer == MULTI_HOTSEAT) {
+    return
+  }
+  // REMOTE
+  let table = createDiv()
+  table.style("background-color", "white")
+  table.style("min-width", "15em")
+  table.style("min-height", "6em")
+  table.style("border", "1px solid black")
+  table.style("padding", "1em")
+  table.position(100, height * 0.4)
+  table.child(createDiv("Player name:"))
+  let nick_input = createInput('')
+  table.child(nick_input)
+  table.child(createDiv())
+  let connbutt = createButton("Connect to PeerServer")
+  connbutt.style("font-size", "16px")
+  table.child(createDiv())
+  table.child(connbutt)
+  let my_id_div = createDiv("")
+  table.child(my_id_div)
+  table.child(createDiv(""))
+  let status_div = createDiv("")
+  table.child(status_div)
+  connbutt.mousePressed(function () {
+    connbutt.hide()
+    peer = new Peer()
+    peer.on('open', function (id) {
+      my_peer_id = id
+      if (is_host) {
+        my_id_div.html("Host peer id: " + id)
+        status_div.html("Waiting for client to connect...")
+        peer.on('connection', function (conn) {
+          peer_conn = conn
+          conn.on('open', function () {
+            // we're good to go
+            conn.on('data', recvMsg)
+            conn.on('close', connClosed)
+            let gobutt = createButton("Begin game")
+            gobutt.style("font-size", "16px")
+            table.child(createDiv())
+            table.child(gobutt)
+            gobutt.mousePressed(function () {
+              nick = nick_input.value()
+              nick_input.hide()
+              turn = "A"
+              mode = MODE_WAIT_PLAN
+              let msg = {
+                type: "init",
+                turn: "B",
+                mode: mode,
+                the_map: the_map
+              }
+              peer_conn.send(msg)
+              removeElements()
+              initChat()
+            })
+          })
+        })
+      } else {
+        // client - connect to a given host id
+        let host_id_input = createInput('')
+        let joinbutt = createButton("Join")
+        table.child(createDiv("Host peer id:"))
+        table.child(host_id_input)
+        table.child(createDiv())
+        table.child(joinbutt)
+        joinbutt.mousePressed(function () {
+          joinbutt.hide()
+          remote_peer_id = host_id_input.value()
+          conn = peer.connect(remote_peer_id)
+          peer_conn = conn
+          conn.on('open', function () {
+            // we're good to go
+            conn.on('data', recvMsg)
+            conn.on('close', connClosed)
+            nick = nick_input.value()
+            nick_input.hide()
+            table.child(createDiv())
+            table.child(createDiv("Hosted. Waiting..."))
+          })
+        })
+      }
+    })
+  })
+}
+
+function mouseClicked_config() {
+  if (!multiplayer) {
+    for (const b of config_buttons) {
+      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+        (b.y < mouseY) && (mouseY < b.y + b.height)) {
+        multiplayer = b.multi
+        is_host = b.host
+        setup_multi()
+      }
+    }
+  } else if (multiplayer == MULTI_HOTSEAT) {
+
+  } else if (multiplayer == MULTI_REMOTE) {
+
+  }
+}
+
+function keyPressed_config() {
+
 }
 
 // WAIT_PLAN
