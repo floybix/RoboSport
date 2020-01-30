@@ -36,6 +36,7 @@ let mode = MODE_CONFIG
 let turn = "A"
 let the_map
 let players = {}
+let next_players = {}
 let scale, board_width, board_height
 
 function setup() {
@@ -226,16 +227,10 @@ function mouseClicked() {
 }
 
 function keyPressed() {
-  if (mode == MODE_CONFIG) {
-    keyPressed_config()
-  } else if (mode == MODE_PLAN) {
+  if (mode == MODE_PLAN) {
     keyPressed_plan()
-  } else if (mode == MODE_WAIT) {
-    keyPressed_wait()
   } else if (mode == MODE_GO) {
     keyPressed_go()
-  } else if (mode == MODE_END) {
-    keyPressed_end()
   }
 }
 
@@ -244,9 +239,13 @@ function keyPressed() {
 let chat_box
 let chat_log
 
+function addToChatLog(content) {
+  chat_log.html(content + chat_log.html())
+}
+
 function initChat() {
   chat_box = createInput()
-  chat_box.size(100)
+  chat_box.style("font-size", "16px")
   chat_box.style("display", "block")
   chat_box.style("width", "90%")
   chat_box.style("border", "1px solid black")
@@ -263,7 +262,7 @@ function initChat() {
           type: "chat",
           text: txt
         }
-        chat_log.html('<p><b>' + msg.text + '</b></p>' + chat_log.html())
+        addToChatLog('<p><b>' + msg.text + '</b></p>')
         peer_conn.send(msg)
         chat_box.value("")
       }
@@ -277,14 +276,41 @@ function recvMsg(msg) {
     mode = msg.mode
     removeElements()
     initChat()
+  }
+  if (msg.type == "chat") {
+    addToChatLog('<p>' + msg.text + '</p>')
+  }
+  if (msg.type == "turndone") {
+    next_players[msg.player_key] = msg.player
+    checkAllDone()
+  }
+}
 
-  } else if (msg.type == "chat") {
-    chat_log.html('<p>' + msg.text + '</p>' + chat_log.html())
+function checkAllDone() {
+  let alldone = true
+  for (const k of players.keys) {
+    if (next_players[k]) alldone = false
+  }
+  if (alldone) {
+    if (is_host) {
+      // broadcast all players moves to all clients
+      for (const k of players.keys) {
+        let msg = {
+          type: "turndone",
+          player_key: k,
+          player: players[k]
+        }
+        peer_conn.send(msg)
+      }
+    }
+    players = next_players
+    next_players = {}
+    mode = MODE_GO
   }
 }
 
 function connClosed() {
-  chat_log.html('<p><i>' + "CONNECTION CLOSED" + '</i></p>', true)
+  addToChatLog('<p><i>' + "CONNECTION CLOSED" + '</i></p>')
 }
 
 // CONFIG
@@ -453,10 +479,6 @@ function mouseClicked_config() {
   } else if (multiplayer == MULTI_REMOTE) {
 
   }
-}
-
-function keyPressed_config() {
-
 }
 
 // WAIT_PLAN
@@ -828,13 +850,7 @@ function mouseClicked_plan() {
       all_done = all_done && idone
     }
     if (all_done) {
-      if (turn == "A") {
-        turn = "B"
-        mode = MODE_WAIT_PLAN
-      } else {
-        turn = "A"
-        mode = MODE_WAIT_GO
-      }
+      turn_done_clicked()
     }
   } else {
     // board
@@ -853,6 +869,32 @@ function mouseClicked_plan() {
     }
     if (targ && (plan_step < n_actions)) {
       plan_action(targ)
+    }
+  }
+}
+
+function turn_done_clicked() {
+  if (multiplayer == MULTI_HOTSEAT) {
+    if (turn == "A") {
+      turn = "B"
+      mode = MODE_WAIT_PLAN
+    } else {
+      turn = "A"
+      mode = MODE_WAIT_GO
+    }
+  } else {
+    // REMOTE
+    mode = MODE_WAIT_GO
+    if (is_host) {
+      next_players[turn] = players[turn]
+      checkAllDone()
+    } else {
+      let msg = {
+        type: "turndone",
+        player_key: turn,
+        player: players[turn]
+      }
+      peer_conn.send(msg)
     }
   }
 }
@@ -923,14 +965,29 @@ function draw_wait_go() {
     }
   }
   // draw overlay message
+  let txt = ""
+  if (multiplayer == MULTI_HOTSEAT) {
+    txt = "All teams ready.\n(click)"
+  } else {
+    txt = "Waiting for other teams..."
+  }
   background(color(0, 0, 0, 50))
   textAlign(CENTER, CENTER)
   fill("white")
   textSize(30)
-  text("All teams ready.", width / 2, height / 2)
-  text("(click)", width / 2, height / 2 + 50)
+  text(txt, width / 2, height / 2)
 }
 
 function mouseClicked_wait_go() {
-  mode = MODE_GO
+  if (multiplayer == MULTI_HOTSEAT) {
+    mode = MODE_GO
+  }
 }
+
+// GO
+
+function draw_go() { }
+
+function mouseClicked_go() { }
+
+function keyPressed_go() { }
