@@ -503,7 +503,7 @@ function draw_wait_plan() {
   drawMap()
   // draw players
   stroke("black")
-  for (const team of ["A", "B"]) {
+  for (const team of Object.keys(players)) {
     fill(team_color[team])
     for (const agent of players[team].agents) {
       drawAgent(agent.at)
@@ -866,7 +866,7 @@ function mouseClicked_plan() {
         plan_step -= 1
       }
     }
-  } else if (mouseY > height - pad.t) {
+  } else if (mouseY > height - pad.b) {
     // bottom panel
     let all_done = true
     for (let ai = 0; ai < n_agents; ai++) {
@@ -987,7 +987,7 @@ function draw_wait_go() {
   drawMap()
   // draw players
   stroke("black")
-  for (const team of ["A", "B"]) {
+  for (const team of Object.keys(players)) {
     fill(team_color[team])
     for (const agent of players[team].agents) {
       drawAgent(agent.at)
@@ -1016,24 +1016,199 @@ function mouseClicked_wait_go() {
 // GO
 
 let go_step
-let go_players
+let go_paused
+let go_acts_per_sec = 1.5
 
 function init_go() {
-  go_step = 0
-  go_players = resolve_actions(players)
+  go_step = 0.0
+  go_paused = true
+  console.log("pre-resolve")
+  console.log(players)
+  resolve_actions(players)
+  console.log("post-resolve")
+  console.log(players)
 }
 
 function resolve_actions(players) {
   // go through actions and tag each with hit/health/dead
   for (let t = 0; t < n_actions; t++) {
-
+    // first, everyone moves
+    for (const team of Object.keys(players)) {
+      for (let ai = 0; ai < n_agents; ai++) {
+        let agent = players[team].agents[ai]
+        // agent object stands in for the first state (action)
+        let prev = (t > 0) ? agent.actions[t - 1] : agent
+        let act = agent.actions[t]
+        act.at = prev.at
+        if ((act.action == ACT_MOVE) && !prev.dead) {
+          act.at = act.target
+        }
+      }
+    }
+    // then, attacks
+    for (const team of Object.keys(players)) {
+      for (let ai = 0; ai < n_agents; ai++) {
+        let agent = players[team].agents[ai]
+        // agent object stands in for the first state (action)
+        let prev = (t > 0) ? agent.actions[t - 1] : agent
+        let act = agent.actions[t]
+        // current health might have been set by another agent
+        if (typeof act.health == 'undefined') {
+          act.health = prev.health
+        }
+        act.dead = act.dead || prev.dead
+        act.bombs = prev.bombs
+        if ((act.action == ACT_BOMB) && !prev.dead) {
+          act.bombs = prev.bombs - 1
+          // find who got hit
+          let tx = act.target[0]
+          let ty = act.target[1]
+          for (const hit_team of Object.keys(players)) {
+            for (let hi = 0; hi < n_agents; hi++) {
+              let hit_agent = players[hit_team].agents[hi]
+              let hact = hit_agent.actions[t]
+              if (hact.dead) continue
+              let x = hact.at[0]
+              let y = hact.at[1]
+              if (dist(x, y, tx, ty) <= bomb_radius + 0.5) {
+                hact.hit = true
+                hact.health -= bomb_damage
+                if (hact.health <= 0) hact.dead = true
+              }
+            }
+          }
+        }
+        if ((act.action == ACT_SCAN) && !prev.dead) {
+          // find who got hit
+          let x = act.at[0]
+          let y = act.at[1]
+          let tx = act.target[0]
+          let ty = act.target[1]
+          let dx = 0
+          let dy = 0
+          if (x < tx) { dx = 1 } else if (x > tx) { dx = -1 }
+          if (y < ty) { dy = 1 } else if (y > ty) { dy = -1 }
+          let hit_at = null
+          while ((x != tx) && (y != ty)) {
+            x += dx
+            y += dy
+            for (const hit_team of Object.keys(players)) {
+              if (hit_team == team) continue
+              for (let hi = 0; hi < n_agents; hi++) {
+                let hit_agent = players[hit_team].agents[hi]
+                let hact = hit_agent.actions[t]
+                if (hact.dead) continue
+                if (hact.at.toString() == [x, y].toString()) {
+                  hact.hit = true
+                  hact.health -= 1
+                  if (hact.health <= 0) hact.dead = true
+                  hit_at = [x, y]
+                }
+                if (hit_at) break
+              }
+              if (hit_at) break
+            }
+            if (hit_at) break
+          }
+          act.scan_hit_at = hit_at
+        }
+      }
+    }
   }
+}
+
+function drawHit(at, z) {
+  noStroke()
+  let col = lerpColor(color("yellow"), color("red"), z)
+  fill(col)
+  let fullsize = scale
+  let size = lerp(fullsize * 0.7, fullsize * 1.2, z)
+  ellipse(pxX(at[0]), pxY(at[1]), size, size)
+}
+
+function drawBombBlast(at, z) {
+  noStroke()
+  let col = lerpColor(color("yellow"), color("red"), z)
+  fill(col)
+  let fullsize = (1 + bomb_radius * 2) * scale
+  let size = lerp(fullsize * 0.7, fullsize * 1.2, z)
+  ellipse(pxX(at[0]), pxY(at[1]), size, size)
 }
 
 function draw_go() {
   drawMap()
+  let t = floor(go_step)
+  let tn = floor(go_step) + 1
+  let z = go_step - t
+  for (const team of Object.keys(players)) {
+    for (let ai = 0; ai < n_agents; ai++) {
+      let agent = players[team].agents[ai]
+      let act = agent
+      if (t > 0) act = agent.actions[t - 1]
+      let nact = agent.actions[tn - 1]
+      if (!nact) nact = act
+      if (act.dead) continue
+      let x = lerp(act.at[0], nact.at[0], z)
+      let y = lerp(act.at[1], nact.at[1], z)
+      fill(team_color[team])
+      drawAgent([x, y])
+      if (act.action == ACT_SCAN) {
+        let scan_to = act.scan_hit_at || act.target
+        drawScan([x, y], scan_to)
+        if (act.scan_hit_at) {
+          drawHit(scan_to, z)
+        }
+      }
+      if (act.action == ACT_BOMB) {
+        drawBombBlast(act.target, z)
+      }
+    }
+  }
+  if (!go_paused) {
+    let go_dt = go_acts_per_sec / frameRate()
+    go_step = min(go_step + go_dt, n_actions)
+  }
+  drawGoTimeline()
+  let y = height - pad.b / 2
+  textAlign(CENTER, CENTER)
+  textSize(16)
+  fill("yellow")
+  noStroke()
+  let msg = ""
+  if (go_step >= n_actions - 1) {
+    msg = "finished watching? ✅ click here to continue."
+  } else {
+    msg = "space = play/pause. arrow keys = step."
+  }
+  text(msg, width / 2, y)
 }
 
-function mouseClicked_go() { }
+function drawGoTimeline() {
+  stroke("white")
+  strokeWeight(2)
+  line(pad.l, pad.t / 2, width - pad.r, pad.t / 2)
+  fill("white")
+  textSize(16)
+  text(floor(go_step), map(go_step, 0, n_actions, pad.l, width - pad.r), pad.t / 4)
+}
 
-function keyPressed_go() { }
+function mouseClicked_go() {
+  if (mouseY > height - pad.b) {
+    // TODO
+    switchMode(MODE_WAIT_PLAN)
+  }
+}
+
+function keyPressed_go() {
+  if (key == "ArrowLeft") {
+    go_step = max(0, ceil(go_step) - 1)
+  }
+  if (key == "ArrowRight") {
+    if (go_step == n_actions) return
+    go_step = min(floor(go_step) + 1, n_actions)
+  }
+  if (key == " ") {
+    go_paused = !go_paused
+  }
+  return false
+}
