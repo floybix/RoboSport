@@ -12,6 +12,9 @@ const ny = 20
 const pad = { l: 100, r: 20, t: 70, b: 50 }
 const n_actions = 10
 const n_agents = 2
+const starting_bombs = 2
+const starting_health = 4
+const bomb_damage = 3
 const bomb_range = 5
 const bomb_radius = 1
 const ground_color = "forestgreen"
@@ -71,6 +74,8 @@ function newAgent(loc) {
   for (let i = 0; i < n_actions; i++) actions[i] = null
   return {
     at: loc,
+    health: starting_health,
+    bombs: starting_bombs,
     actions: actions
   }
 }
@@ -803,6 +808,15 @@ function draw_timeline(agent) {
   text("last action", width - pad.r, pad.t / 4 - 2)
 }
 
+function n_bombs_left() {
+  let agent = players[turn].agents[plan_agent]
+  let n = agent.bombs
+  for (let i = 0; i < plan_step; i++) {
+    if (agent.actions[i].action == ACT_BOMB) n--
+  }
+  return n
+}
+
 function draw_plan_controls() {
   textAlign(CENTER, CENTER)
   textSize(16)
@@ -814,7 +828,11 @@ function draw_plan_controls() {
     }
     rect(b.x, b.y, b.width, b.height)
     fill("black")
-    text(b.label, b.x + b.width / 2, b.y + b.height / 2)
+    label = b.label
+    if (b.mode == PMODE_BOMB) {
+      label = label + ":" + n_bombs_left()
+    }
+    text(label, b.x + b.width / 2, b.y + b.height / 2)
   }
   // title
   noStroke()
@@ -937,9 +955,14 @@ function plan_action(targ) {
     let yi = curr_loc[1]
     if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
       if (the_map[targ[0]][targ[1]] != "wall") {
-        let act = { action: ACT_BOMB, target: targ }
-        agent.actions[plan_step] = act
-        plan_step = min(n_actions, plan_step + 1)
+        if (n_bombs_left() > 0) {
+          let act = { action: ACT_BOMB, target: targ }
+          agent.actions[plan_step] = act
+          for (let i = plan_step + 1; i < n_actions; i++) {
+            agent.actions[i] = null
+          }
+          plan_step = min(n_actions, plan_step + 1)
+        }
       }
     }
   }
@@ -992,7 +1015,20 @@ function mouseClicked_wait_go() {
 
 // GO
 
-function init_go() { }
+let go_step
+let go_players
+
+function init_go() {
+  go_step = 0
+  go_players = resolve_actions(players)
+}
+
+function resolve_actions(players) {
+  // go through actions and tag each with hit/health/dead
+  for (let t = 0; t < n_actions; t++) {
+
+  }
+}
 
 function draw_go() {
   drawMap()
