@@ -506,6 +506,7 @@ function draw_wait_plan() {
   for (const team of Object.keys(players)) {
     fill(team_color[team])
     for (const agent of players[team].agents) {
+      if (agent.dead) continue
       drawAgent(agent.at)
     }
   }
@@ -638,6 +639,7 @@ function draw_plan() {
   let opponent = players[opp]
   fill(team_color[opp])
   for (const agent of opponent.agents) {
+    if (agent.dead) continue
     drawAgent(agent.at)
   }
   // draw cone of possible locations
@@ -647,6 +649,7 @@ function draw_plan() {
   stroke(team_color[opp])
   strokeWeight(3)
   for (const agent of opponent.agents) {
+    if (agent.dead) continue
     let xi, yi
     [xi, yi] = agent.at
     let d = plan_step + 0.5
@@ -664,6 +667,7 @@ function draw_plan() {
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
     let agent = players[turn].agents[ai]
+    if (agent.dead) continue
     let loc = agent.at
     fill(team_color[turn])
     drawAgent(loc)
@@ -687,6 +691,8 @@ function draw_plan() {
   }
   strokeWeight(3)
   for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[turn].agents[ai]
+    if (agent.dead) continue
     stroke((ai == plan_agent) ? "yellow" : "black")
     drawAgent(curr_locs[ai])
   }
@@ -699,6 +705,8 @@ function draw_plan() {
   let targ = xy_to_grid(mouseX, mouseY)
   let on_agent = false
   for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[turn].agents[ai]
+    if (agent.dead) continue
     if (targ && (targ.toString() == curr_locs[ai].toString())) {
       on_agent = true
     }
@@ -756,6 +764,8 @@ function draw_plan() {
   let curr_done = false
   let all_done = true
   for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[turn].agents[ai]
+    if (agent.dead) continue
     let idone = players[turn].agents[ai].actions[n_actions - 1]
     if (ai == plan_agent) curr_done = idone
     all_done = all_done && idone
@@ -990,6 +1000,7 @@ function draw_wait_go() {
   for (const team of Object.keys(players)) {
     fill(team_color[team])
     for (const agent of players[team].agents) {
+      if (agent.dead) continue
       drawAgent(agent.at)
     }
   }
@@ -1175,7 +1186,7 @@ function draw_go() {
   fill("yellow")
   noStroke()
   let msg = ""
-  if (go_step >= n_actions - 1) {
+  if (go_step >= n_actions) {
     msg = "finished watching? ✅ click here to continue."
   } else {
     msg = "space = play/pause. arrow keys = step."
@@ -1194,9 +1205,23 @@ function drawGoTimeline() {
 
 function mouseClicked_go() {
   if (mouseY > height - pad.b) {
-    // TODO
-    switchMode(MODE_WAIT_PLAN)
+    go_done()
   }
+}
+
+function go_done() {
+  for (const team of Object.keys(players)) {
+    for (let ai = 0; ai < n_agents; ai++) {
+      let agent = players[team].agents[ai]
+      let a = agent.actions[n_actions - 1]
+      agent.at = a.at
+      agent.dead = a.dead
+      agent.health = a.health
+      agent.bombs = a.bombs
+      agent.actions = []
+    }
+  }
+  switchMode(MODE_WAIT_PLAN)
 }
 
 function keyPressed_go() {
@@ -1209,6 +1234,12 @@ function keyPressed_go() {
   }
   if (key == " ") {
     go_paused = !go_paused
+  }
+  if (key == "=") {
+    go_acts_per_sec *= 1.2
+  }
+  if (key == "-") {
+    go_acts_per_sec /= 1.2
   }
   return false
 }
