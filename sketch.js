@@ -54,6 +54,7 @@ function setup() {
     board_width = nx * scale
   }
   colorMode(HSB, 100)
+  switchMode(MODE_CONFIG)
   restart()
 }
 
@@ -194,6 +195,17 @@ function drawMap() {
 
 // GENERICS
 
+function switchMode(new_mode) {
+  mode = new_mode
+  if (mode == MODE_CONFIG) {
+    init_config()
+  } else if (mode == MODE_PLAN) {
+    init_plan()
+  } else if (mode == MODE_GO) {
+    init_go()
+  }
+}
+
 function draw() {
   if (mode == MODE_CONFIG) {
     draw_config()
@@ -273,7 +285,7 @@ function recvMsg(msg) {
   if (msg.type == "init") {
     the_map = msg.the_map
     turn = msg.turn
-    mode = msg.mode
+    switchMode(mode)
     removeElements()
     initChat()
   }
@@ -305,7 +317,7 @@ function checkAllDone() {
     }
     players = next_players
     next_players = {}
-    mode = MODE_GO
+    switchMode(MODE_GO)
   }
 }
 
@@ -335,7 +347,7 @@ let config_buttons =
     desc: "connect to another computer (join a game)"
   }]
 
-function draw_config() {
+function init_config() {
   // set up buttons
   let nb = config_buttons.length
   for (let i = 0; i < config_buttons.length; i++) {
@@ -345,6 +357,9 @@ function draw_config() {
     b.y = height / 2 + i * 2 * b.height
     b.x = 60
   }
+}
+
+function draw_config() {
   background(wall_color);
   textAlign(CENTER, CENTER)
   fill("white")
@@ -376,11 +391,7 @@ function draw_config() {
   }
 }
 
-function setup_multi() {
-  if (multiplayer == MULTI_HOTSEAT) {
-    return
-  }
-  // REMOTE
+function setup_remote_multi() {
   let table = createDiv()
   table.style("background-color", "white")
   table.style("min-width", "15em")
@@ -423,7 +434,7 @@ function setup_multi() {
               nick = nick_input.value()
               nick_input.hide()
               turn = "A"
-              mode = MODE_WAIT_PLAN
+              switchMode(MODE_WAIT_PLAN)
               let msg = {
                 type: "init",
                 turn: "B",
@@ -471,13 +482,13 @@ function mouseClicked_config() {
         (b.y < mouseY) && (mouseY < b.y + b.height)) {
         multiplayer = b.multi
         is_host = b.host
-        setup_multi()
+        if (multiplayer == MULTI_HOTSEAT) {
+          switchMode(MODE_WAIT_PLAN)
+        } else {
+          setup_remote_multi()
+        }
       }
     }
-  } else if (multiplayer == MULTI_HOTSEAT) {
-
-  } else if (multiplayer == MULTI_REMOTE) {
-
   }
 }
 
@@ -505,12 +516,7 @@ function draw_wait_plan() {
 }
 
 function mouseClicked_wait_plan() {
-  mode = MODE_PLAN
-  init_plan_mode()
-}
-function keyPressed_wait_plan() {
-  mode = MODE_PLAN
-  init_plan_mode()
+  switchMode(MODE_PLAN)
 }
 
 // PLAN
@@ -519,16 +525,37 @@ const PMODE_MOVE = 1
 const PMODE_SCAN = 2
 const PMODE_BOMB = 3
 
+let plan_buttons = [{
+  mode: PMODE_MOVE,
+  label: ACT_MOVE + " move"
+},
+{
+  mode: PMODE_SCAN,
+  label: ACT_SCAN + " scan"
+},
+{
+  mode: PMODE_BOMB,
+  label: ACT_BOMB + " bomb"
+}]
+
 let plan_step
 let plan_agent
 let plan_mode
 let plan_graph
 
-function init_plan_mode() {
+function init_plan() {
   plan_step = 0
   plan_agent = 0
   plan_mode = PMODE_MOVE
   generate_plan_graph()
+  // set up buttons
+  for (let i = 0; i < plan_buttons.length; i++) {
+    b = plan_buttons[i]
+    b.width = pad.l - 16
+    b.height = 30
+    b.y = pad.t + i * b.height * 2
+    b.x = 8
+  }
 }
 
 function generate_plan_graph() {
@@ -776,28 +803,7 @@ function draw_timeline(agent) {
   text("last action", width - pad.r, pad.t / 4 - 2)
 }
 
-let plan_buttons = [{
-  mode: PMODE_MOVE,
-  label: ACT_MOVE + " move"
-},
-{
-  mode: PMODE_SCAN,
-  label: ACT_SCAN + " scan"
-},
-{
-  mode: PMODE_BOMB,
-  label: ACT_BOMB + " bomb"
-}]
-
 function draw_plan_controls() {
-  // set up buttons
-  for (let i = 0; i < plan_buttons.length; i++) {
-    b = plan_buttons[i]
-    b.width = pad.l - 16
-    b.height = 30
-    b.y = pad.t + i * b.height * 2
-    b.x = 8
-  }
   textAlign(CENTER, CENTER)
   textSize(16)
   for (const b of plan_buttons) {
@@ -877,14 +883,14 @@ function turn_done_clicked() {
   if (multiplayer == MULTI_HOTSEAT) {
     if (turn == "A") {
       turn = "B"
-      mode = MODE_WAIT_PLAN
+      switchMode(MODE_WAIT_PLAN)
     } else {
       turn = "A"
-      mode = MODE_WAIT_GO
+      switchMode(MODE_WAIT_GO)
     }
   } else {
     // REMOTE
-    mode = MODE_WAIT_GO
+    switchMode(MODE_WAIT_GO)
     if (is_host) {
       next_players[turn] = players[turn]
       checkAllDone()
@@ -980,13 +986,17 @@ function draw_wait_go() {
 
 function mouseClicked_wait_go() {
   if (multiplayer == MULTI_HOTSEAT) {
-    mode = MODE_GO
+    switchMode(MODE_GO)
   }
 }
 
 // GO
 
-function draw_go() { }
+function init_go() { }
+
+function draw_go() {
+  drawMap()
+}
 
 function mouseClicked_go() { }
 
