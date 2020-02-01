@@ -532,7 +532,7 @@ const PMODE_BOMB = 3
 
 let plan_buttons = [{
   mode: PMODE_MOVE,
-  label: ACT_MOVE + " move"
+  label: ACT_MOVE + " move (m)"
 },
 {
   mode: PMODE_SCAN,
