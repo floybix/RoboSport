@@ -44,7 +44,7 @@ let scale, board_width, board_height
 
 function setup() {
   createCanvas(600, 600);
-  frameRate(5)
+  frameRate(30)
   let free_height = height - pad.t - pad.b
   let free_width = width - pad.l - pad.r
   if (free_width < free_height) {
@@ -272,7 +272,6 @@ function initChat() {
   document.getElementById("chat_box").addEventListener('change',
     (event) => {
       let txt = chat_box.value()
-      console.log(txt)
       if (txt.trim().length > 0) {
         txt = nick + ": " + txt
         let msg = {
@@ -829,7 +828,7 @@ function n_bombs_left() {
 
 function draw_plan_controls() {
   textAlign(CENTER, CENTER)
-  textSize(16)
+  textSize(12)
   for (const b of plan_buttons) {
     if (b.mode == plan_mode) {
       fill("yellow")
@@ -844,11 +843,14 @@ function draw_plan_controls() {
     }
     text(label, b.x + b.width / 2, b.y + b.height / 2)
   }
-  // title
+  // note
+  fill("white")
   noStroke()
   textAlign(LEFT, BASELINE)
+  textSize(12)
+  text("Switch agent:\n Tab / click on it", 5, height/2)
+  // title
   textSize(16)
-  fill("white")
   text("Player " + turn + "\n→ agent " + (plan_agent + 1), 5, 20)
 }
 
@@ -893,17 +895,20 @@ function mouseClicked_plan() {
     let curr_locs = current_plan_locs()
     for (let ai = 0; ai < n_agents; ai++) {
       if (targ.toString() == curr_locs[ai].toString()) {
-        plan_agent = ai
-        actions = players[turn].agents[ai].actions
-        while ((plan_step > 0) && !actions[plan_step - 1]) {
-          plan_step -= 1
-        }
-        return
+        switchPlanAgent(ai)
       }
     }
     if (targ && (plan_step < n_actions)) {
       plan_action(targ)
     }
+  }
+}
+
+function switchPlanAgent(ai) {
+  plan_agent = ai
+  actions = players[turn].agents[ai].actions
+  while ((plan_step > 0) && !actions[plan_step - 1]) {
+    plan_step -= 1
   }
 }
 
@@ -989,6 +994,18 @@ function keyPressed_plan() {
       plan_step += 1
     }
   }
+  if (key == "m") {
+    plan_mode = PMODE_MOVE
+  }
+  if (key == "s") {
+    plan_mode = PMODE_SCAN
+  }
+  if (key == "b") {
+    plan_mode = PMODE_BOMB
+  }
+  if (key == "Tab") {
+    switchPlanAgent((plan_agent + 1) % n_agents)
+  }
 }
 
 // WAIT_GO
@@ -1028,13 +1045,11 @@ function mouseClicked_wait_go() {
 
 let go_step
 let go_paused
-let go_acts_per_sec = 1.5
+let go_acts_per_sec = 1.8
 
 function init_go() {
   go_step = 0.0
   go_paused = true
-  console.log("pre-resolve")
-  console.log(players)
   resolve_actions(players)
   console.log("post-resolve")
   console.log(players)
@@ -1043,7 +1058,7 @@ function init_go() {
 function resolve_actions(players) {
   // go through actions and tag each with hit/health/dead
   for (let t = 0; t < n_actions; t++) {
-    // first, everyone moves
+    // first, everyone moves.
     for (const team of Object.keys(players)) {
       for (let ai = 0; ai < n_agents; ai++) {
         let agent = players[team].agents[ai]
@@ -1056,7 +1071,7 @@ function resolve_actions(players) {
         }
       }
     }
-    // then, attacks
+    // then, attacks happen
     for (const team of Object.keys(players)) {
       for (let ai = 0; ai < n_agents; ai++) {
         let agent = players[team].agents[ai]
@@ -1078,11 +1093,16 @@ function resolve_actions(players) {
             for (let hi = 0; hi < n_agents; hi++) {
               let hit_agent = players[hit_team].agents[hi]
               let hact = hit_agent.actions[t]
+              let hprev = (t > 0) ? hit_agent.actions[t - 1] : hit_agent
+              hact.dead = hact.dead || hprev.dead
               if (hact.dead) continue
               let x = hact.at[0]
               let y = hact.at[1]
               if (dist(x, y, tx, ty) <= bomb_radius + 0.5) {
                 hact.hit = true
+                if (typeof hact.health == 'undefined') {
+                  hact.health = hprev.health
+                }
                 hact.health -= bomb_damage
                 if (hact.health <= 0) hact.dead = true
               }
@@ -1100,7 +1120,7 @@ function resolve_actions(players) {
           if (x < tx) { dx = 1 } else if (x > tx) { dx = -1 }
           if (y < ty) { dy = 1 } else if (y > ty) { dy = -1 }
           let hit_at = null
-          while ((x != tx) && (y != ty)) {
+          while (!((x == tx) && (y == ty))) {
             x += dx
             y += dy
             for (const hit_team of Object.keys(players)) {
@@ -1108,9 +1128,14 @@ function resolve_actions(players) {
               for (let hi = 0; hi < n_agents; hi++) {
                 let hit_agent = players[hit_team].agents[hi]
                 let hact = hit_agent.actions[t]
+                let hprev = (t > 0) ? hit_agent.actions[t - 1] : hit_agent
+                hact.dead = hact.dead || hprev.dead
                 if (hact.dead) continue
                 if (hact.at.toString() == [x, y].toString()) {
                   hact.hit = true
+                  if (typeof hact.health == 'undefined') {
+                    hact.health = hprev.health
+                  }
                   hact.health -= 1
                   if (hact.health <= 0) hact.dead = true
                   hit_at = [x, y]
@@ -1130,10 +1155,10 @@ function resolve_actions(players) {
 
 function drawHit(at, z) {
   noStroke()
-  let col = lerpColor(color("yellow"), color("red"), z)
+  let col = lerpColor(color("white"), color("black"), z)
   fill(col)
   let fullsize = scale
-  let size = lerp(fullsize * 0.7, fullsize * 1.2, z)
+  let size = lerp(fullsize * 1.0, fullsize * 0.0, z)
   ellipse(pxX(at[0]), pxY(at[1]), size, size)
 }
 
@@ -1151,6 +1176,9 @@ function draw_go() {
   let t = floor(go_step)
   let tn = floor(go_step) + 1
   let z = go_step - t
+  // first, draw agents
+  let drawable_bombs = []
+  let drawable_hits = []
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
@@ -1165,15 +1193,26 @@ function draw_go() {
       drawAgent([x, y])
       if (act.action == ACT_SCAN) {
         let scan_to = act.scan_hit_at || act.target
+        push()
+        stroke(color(0, 100, 100, 25))
+        strokeWeight(scale / 2)
         drawScan([x, y], scan_to)
+        pop()
         if (act.scan_hit_at) {
-          drawHit(scan_to, z)
+          drawable_hits.push(scan_to)
         }
       }
       if (act.action == ACT_BOMB) {
-        drawBombBlast(act.target, z)
+        drawable_bombs.push(act.target)
       }
     }
+  }
+  // then, draw actions
+  for (const loc of drawable_hits) {
+    drawHit(loc, z)
+  }
+  for (const loc of drawable_bombs) {
+    drawBombBlast(loc, z)
   }
   if (!go_paused) {
     let go_dt = go_acts_per_sec / frameRate()
@@ -1198,9 +1237,12 @@ function drawGoTimeline() {
   stroke("white")
   strokeWeight(2)
   line(pad.l, pad.t / 2, width - pad.r, pad.t / 2)
+  stroke("black")
   fill("white")
   textSize(16)
+  strokeWeight(1)
   text(floor(go_step), map(go_step, 0, n_actions, pad.l, width - pad.r), pad.t / 4)
+  text("Turn " + 1, pad.l / 2, pad.t / 2)
 }
 
 function mouseClicked_go() {
@@ -1226,6 +1268,7 @@ function go_done() {
 
 function keyPressed_go() {
   if (key == "ArrowLeft") {
+    go_paused = true
     go_step = max(0, ceil(go_step) - 1)
   }
   if (key == "ArrowRight") {
