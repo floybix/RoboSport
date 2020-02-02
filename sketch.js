@@ -30,9 +30,10 @@ const MODE_WAIT_GO = 3
 const MODE_GO = 4
 const MODE_END = 5
 
-const ACT_MOVE = "👣"
-const ACT_SCAN = "🔊"
-const ACT_BOMB = "💣"
+const ACT_MOVE = 0
+const ACT_SCAN = 1
+const ACT_BOMB = 2
+const act_symbols = ["👣", "🔊", "💣"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
 let mode = MODE_CONFIG
@@ -289,7 +290,7 @@ function recvMsg(msg) {
   if (msg.type == "init") {
     the_map = msg.the_map
     turn = msg.turn
-    switchMode(mode)
+    switchMode(msg.mode)
     removeElements()
     initChat()
   }
@@ -297,6 +298,8 @@ function recvMsg(msg) {
     addToChatLog('<p>' + msg.text + '</p>')
   }
   if (msg.type == "turndone") {
+    console.log("recv turndone:")
+    console.log(msg)
     next_players[msg.player_key] = msg.player
     checkAllDone()
   }
@@ -304,23 +307,24 @@ function recvMsg(msg) {
 
 function checkAllDone() {
   let alldone = true
-  for (const k of players.keys) {
-    if (next_players[k]) alldone = false
+  for (const k of Object.keys(players)) {
+    if (!next_players[k]) alldone = false
   }
   if (alldone) {
     if (is_host) {
       // broadcast all players moves to all clients
-      for (const k of players.keys) {
+      for (const k of Object.keys(players)) {
         let msg = {
           type: "turndone",
           player_key: k,
-          player: players[k]
+          player: next_players[k]
         }
         peer_conn.send(msg)
       }
     }
     players = next_players
     next_players = {}
+    console.log(players)
     switchMode(MODE_GO)
   }
 }
@@ -532,15 +536,15 @@ const PMODE_BOMB = 3
 
 let plan_buttons = [{
   mode: PMODE_MOVE,
-  label: ACT_MOVE + " move (m)"
+  label: act_symbols[ACT_MOVE] + " move (m)"
 },
 {
   mode: PMODE_SCAN,
-  label: ACT_SCAN + " scan"
+  label: act_symbols[ACT_SCAN] + " scan"
 },
 {
   mode: PMODE_BOMB,
-  label: ACT_BOMB + " bomb"
+  label: act_symbols[ACT_BOMB] + " bomb"
 }]
 
 let plan_step
@@ -558,7 +562,7 @@ function init_plan() {
     b = plan_buttons[i]
     b.width = pad.l - 16
     b.height = 30
-    b.y = pad.t + i * b.height * 2
+    b.y = pad.t + 50 + i * b.height * 2
     b.x = 8
   }
 }
@@ -801,7 +805,7 @@ function draw_timeline(agent) {
     if (i > 0) {
       let act = agent.actions[i - 1]
       if (act) {
-        text(act.action, x + 0.5 * time_dx, pad.t / 2)
+        text(act_symbols[act.action], x + 0.5 * time_dx, pad.t / 2)
       }
     }
   }
@@ -848,10 +852,11 @@ function draw_plan_controls() {
   noStroke()
   textAlign(LEFT, BASELINE)
   textSize(12)
-  text("Switch agent:\n Tab / click on it", 5, height/2)
+  text("Switch agent:\n Tab / click on it", 5, height - pad.b - 50)
   // title
+  let agent = players[turn].agents[plan_agent]
   textSize(16)
-  text("Player " + turn + "\n→ agent " + (plan_agent + 1), 5, 20)
+  text("Player " + turn + "\n→ agent " + (plan_agent + 1) + "\n (health " + agent.health + ")", 5, 20)
 }
 
 function mouseClicked_plan() {
@@ -1226,7 +1231,7 @@ function draw_go() {
   noStroke()
   let msg = ""
   if (go_step >= n_actions) {
-    msg = "finished watching? ✅ click here to continue."
+    msg = "finished watching? ✅ click here for next turn."
   } else {
     msg = "space = play/pause. arrow keys = step."
   }
@@ -1247,7 +1252,11 @@ function drawGoTimeline() {
 
 function mouseClicked_go() {
   if (mouseY > height - pad.b) {
-    go_done()
+    if (go_step >= n_actions) {
+      go_done()
+    } else {
+      go_paused = !go_paused
+    }
   }
 }
 
