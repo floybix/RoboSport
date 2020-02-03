@@ -1,5 +1,9 @@
 
-The robot sprites were created by yd:
+The robot sprites are Public Domain, by yd:
 https://opengameart.org/content/platformer-sprites
-(Public Domain)
 
+Bomb explosion sound is CC-BY-NC by ryansnook:
+https://freesound.org/s/110113/
+
+Gun shot sound is CC-BY by CJDeets:
+https://freesound.org/s/476740/

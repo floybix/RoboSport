@@ -42,6 +42,12 @@ let the_map
 let players = {}
 let next_players = {}
 let scale, board_width, board_height
+let hit_sound, bomb_sound
+
+function preload() {
+  hit_sound = loadSound("assets/476740__cjdeets__shot-scifi-powerdown.wav")
+  bomb_sound = loadSound("assets/110113__ryansnook__medium-explosion")
+}
 
 function setup() {
   createCanvas(600, 600);
@@ -1211,7 +1217,13 @@ function draw_go() {
   }
   if (!go_paused) {
     let go_dt = go_acts_per_sec / frameRate()
+    // if reached a new action step
+    if (floor(go_step) != floor(go_step - go_dt)) {
+      if (drawable_hits.length > 0) hit_sound.play()
+      if (drawable_bombs.length > 0) bomb_sound.play()
+    }
     go_step = min(go_step + go_dt, n_actions)
+    if (go_step == n_actions) go_paused = true
   }
   drawGoTimeline()
   let y = height - pad.b / 2
