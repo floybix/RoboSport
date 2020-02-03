@@ -263,14 +263,10 @@ function addToChatLog(content) {
 
 function initChat() {
   chat_box = createInput()
-  chat_box.style("font-size", "16px")
-  chat_box.style("display", "block")
-  chat_box.style("width", "90%")
-  chat_box.style("border", "1px solid black")
-  chat_box.id("chat_box")
+  chat_box.id("chat-box")
   chat_log = createDiv()
-  chat_log.style("resize", "both")
-  document.getElementById("chat_box").addEventListener('change',
+  chat_log.id("chat-log")
+  document.getElementById("chat-box").addEventListener('change',
     (event) => {
       let txt = chat_box.value()
       if (txt.trim().length > 0) {
@@ -279,7 +275,7 @@ function initChat() {
           type: "chat",
           text: txt
         }
-        addToChatLog('<p><b>' + msg.text + '</b></p>')
+        addToChatLog('<p class="mychat">' + msg.text + '</p>')
         peer_conn.send(msg)
         chat_box.value("")
       }
@@ -298,8 +294,6 @@ function recvMsg(msg) {
     addToChatLog('<p>' + msg.text + '</p>')
   }
   if (msg.type == "turndone") {
-    console.log("recv turndone:")
-    console.log(msg)
     next_players[msg.player_key] = msg.player
     checkAllDone()
   }
@@ -330,7 +324,7 @@ function checkAllDone() {
 }
 
 function connClosed() {
-  addToChatLog('<p><i>' + "CONNECTION CLOSED" + '</i></p>')
+  addToChatLog('<p class="syschat">' + "Connection closed." + '</p>')
 }
 
 // CONFIG
@@ -388,54 +382,47 @@ function draw_config() {
       textAlign(LEFT, CENTER)
       text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
     }
-  } else if (multiplayer == MULTI_HOTSEAT) {
-    fill("yellow")
-    text("hotseat", width / 2, height / 2 + 100)
-
-  } else if (multiplayer == MULTI_REMOTE) {
-    fill("yellow")
-    text("remote", width / 2, height / 2 + 100)
-
   }
 }
 
 function setup_remote_multi() {
   let table = createDiv()
-  table.style("background-color", "white")
-  table.style("min-width", "15em")
-  table.style("min-height", "6em")
-  table.style("border", "1px solid black")
-  table.style("padding", "1em")
+  table.class("setup-remote")
   table.position(100, height * 0.4)
   table.child(createDiv("Player name:"))
   let nick_input = createInput('')
   table.child(nick_input)
   table.child(createDiv())
   let connbutt = createButton("Connect to PeerServer")
-  connbutt.style("font-size", "16px")
+  connbutt.id("peerserver-conn")
   table.child(createDiv())
   table.child(connbutt)
-  let my_id_div = createDiv("")
-  table.child(my_id_div)
-  table.child(createDiv(""))
-  let status_div = createDiv("")
-  table.child(status_div)
   connbutt.mousePressed(function () {
     connbutt.hide()
     peer = new Peer()
     peer.on('open', function (id) {
       my_peer_id = id
       if (is_host) {
-        my_id_div.html("Host peer id: " + id)
-        status_div.html("Waiting for client to connect...")
+        table.child(createDiv("Host peer id: "))
+        let id_div = createDiv(id)
+        id_div.id("peerid")
+        table.child(id_div)
+        let waitingdiv = createDiv("Waiting for client(s) to connect...")
+        waitingdiv.class("waiting")
+        table.child(waitingdiv)
+        let clientsdiv = createDiv()
+        clientsdiv.id("peer-clients")
+        table.child(clientsdiv)
+        let good_to_go = false
         peer.on('connection', function (conn) {
           peer_conn = conn
           conn.on('open', function () {
-            // we're good to go
+            clientsdiv.child(createDiv(conn.label))
             conn.on('data', recvMsg)
             conn.on('close', connClosed)
+            if (good_to_go) { return }
+            good_to_go = true
             let gobutt = createButton("Begin game")
-            gobutt.style("font-size", "16px")
             table.child(createDiv())
             table.child(gobutt)
             gobutt.mousePressed(function () {
@@ -458,7 +445,7 @@ function setup_remote_multi() {
       } else {
         // client - connect to a given host id
         let host_id_input = createInput('')
-        let joinbutt = createButton("Join")
+        let joinbutt = createButton("Join game")
         table.child(createDiv("Host peer id:"))
         table.child(host_id_input)
         table.child(createDiv())
@@ -466,7 +453,8 @@ function setup_remote_multi() {
         joinbutt.mousePressed(function () {
           joinbutt.hide()
           remote_peer_id = host_id_input.value()
-          conn = peer.connect(remote_peer_id)
+          nick = nick_input.value()
+          conn = peer.connect(remote_peer_id, { label: nick })
           peer_conn = conn
           conn.on('open', function () {
             // we're good to go
@@ -475,7 +463,9 @@ function setup_remote_multi() {
             nick = nick_input.value()
             nick_input.hide()
             table.child(createDiv())
-            table.child(createDiv("Hosted. Waiting..."))
+            let waitingdiv = createDiv("<p>Hosted 🎉</p><p>Waiting for game to start...</p>")
+            waitingdiv.class("waiting")
+            table.child(waitingdiv)
           })
         })
       }
@@ -540,7 +530,7 @@ let plan_buttons = [{
 },
 {
   mode: PMODE_SCAN,
-  label: act_symbols[ACT_SCAN] + " scan"
+  label: act_symbols[ACT_SCAN] + " scan (s)"
 },
 {
   mode: PMODE_BOMB,
