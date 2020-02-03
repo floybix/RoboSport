@@ -42,11 +42,17 @@ let the_map
 let players = {}
 let next_players = {}
 let scale, board_width, board_height
-let hit_sound, bomb_sound
+let sounds = {}
 
 function preload() {
-  hit_sound = loadSound("assets/476740__cjdeets__shot-scifi-powerdown.wav")
-  bomb_sound = loadSound("assets/110113__ryansnook__medium-explosion")
+  soundFormats('mp3', 'ogg')
+  sounds.hit = loadSound("assets/476740_shot.mp3")
+  sounds.bomb = loadSound("assets/110113_bomb.mp3")
+  sounds.scan = loadSound("assets/137781_scan.mp3")
+  sounds.launch = loadSound("assets/162361_launch.mp3")
+  sounds.death = loadSound("assets/144469_death.mp3")
+  sounds.hit.setVolume(1.5)
+  sounds.bomb.setVolume(0.7)
 }
 
 function setup() {
@@ -1219,11 +1225,11 @@ function draw_go() {
     let go_dt = go_acts_per_sec / frameRate()
     // if reached a new action step
     if (floor(go_step) != floor(go_step - go_dt)) {
-      if (drawable_hits.length > 0) hit_sound.play()
-      if (drawable_bombs.length > 0) bomb_sound.play()
+      if (drawable_hits.length > 0) sounds.hit.play()
+      if (drawable_bombs.length > 0) sounds.bomb.play()
     }
-    go_step = min(go_step + go_dt, n_actions)
     if (go_step == n_actions) go_paused = true
+    go_step = min(go_step + go_dt, n_actions)
   }
   drawGoTimeline()
   let y = height - pad.b / 2
@@ -1249,6 +1255,7 @@ function drawGoTimeline() {
   textSize(16)
   strokeWeight(1)
   text(floor(go_step), map(go_step, 0, n_actions, pad.l, width - pad.r), pad.t / 4)
+  textSize(24)
   text("Turn " + 1, pad.l / 2, pad.t / 2)
 }
 
