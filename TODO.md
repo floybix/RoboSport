@@ -1,6 +1,5 @@
 # to do
 
-* bombs explode the step following their launch
 * display agent health
 * increase / variable number of agents
 * variable number of players 2/3/4

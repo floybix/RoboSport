@@ -33,7 +33,9 @@ const MODE_END = 5
 const ACT_MOVE = 0
 const ACT_SCAN = 1
 const ACT_BOMB = 2
-const act_symbols = ["👣", "🔊", "💣"]
+const ACT_PREBOMB = 3
+const ACT_DIE = 9
+const act_symbols = ["👣", "🔊", "💣", "🔜"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
 let mode = MODE_CONFIG
@@ -179,6 +181,18 @@ function drawBombAction(at) {
   ellipse(pxX(xi), pxY(yi),
     scale + 2 * bomb_radius * scale,
     scale + 2 * bomb_radius * scale)
+  pop()
+}
+
+function drawPreBombAction(at) {
+  let xi, yi
+  [xi, yi] = at
+  push()
+  clip_to_board()
+  line(pxX(xi) - scale, pxY(yi) - scale,
+    pxX(xi) + scale, pxY(yi) + scale)
+  line(pxX(xi) - scale, pxY(yi) + scale,
+    pxX(xi) + scale, pxY(yi) - scale)
   pop()
 }
 
@@ -692,6 +706,9 @@ function draw_plan() {
         noFill()
         drawBombAction(act.target)
       }
+      if (act.action == ACT_PREBOMB) {
+        drawPreBombAction(act.target)
+      }
     }
   }
   strokeWeight(3)
@@ -738,6 +755,8 @@ function draw_plan() {
         drawScan(curr_loc, sight_to)
       }
     }
+    // bomb actions take up 2 action steps
+    let can_bomb = (plan_step < n_actions - 1)
     if (plan_mode == PMODE_BOMB) {
       // draw valid range on board
       push()
@@ -751,7 +770,9 @@ function draw_plan() {
       fill(highlight)
       noStroke()
       // within range
-      if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
+      if (!can_bomb) {
+        text("Need 2 free actions for a 💣", mouseX, mouseY)
+      } else if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
         if (the_map[targ[0]][targ[1]] == "wall") {
           text("🚫", mouseX, mouseY)
         } else {
@@ -900,12 +921,14 @@ function mouseClicked_plan() {
     let targ = xy_to_grid(mouseX, mouseY)
     // if clicked on an agent, switch to it
     let curr_locs = current_plan_locs()
+    let on_agent = false
     for (let ai = 0; ai < n_agents; ai++) {
       if (targ.toString() == curr_locs[ai].toString()) {
+        on_agent = true
         switchPlanAgent(ai)
       }
     }
-    if (targ && (plan_step < n_actions)) {
+    if (targ && !on_agent && (plan_step < n_actions)) {
       plan_action(targ)
     }
   }
@@ -972,18 +995,22 @@ function plan_action(targ) {
     }
     plan_step = min(n_actions, plan_step + 1)
   }
-  if (plan_mode == PMODE_BOMB) {
+  // bomb actions need 2 action steps
+  let can_bomb = (plan_step < n_actions - 1)
+  if ((plan_mode == PMODE_BOMB) && can_bomb) {
     let xi = curr_loc[0]
     let yi = curr_loc[1]
     if (dist(targ[0], targ[1], xi, yi) <= bomb_range) {
       if (the_map[targ[0]][targ[1]] != "wall") {
         if (n_bombs_left() > 0) {
-          let act = { action: ACT_BOMB, target: targ }
-          agent.actions[plan_step] = act
-          for (let i = plan_step + 1; i < n_actions; i++) {
+          let act1 = { action: ACT_PREBOMB, target: targ }
+          let act2 = { action: ACT_BOMB, target: targ }
+          agent.actions[plan_step] = act1
+          agent.actions[plan_step+1] = act2
+          for (let i = plan_step + 2; i < n_actions; i++) {
             agent.actions[i] = null
           }
-          plan_step = min(n_actions, plan_step + 1)
+          plan_step = min(n_actions, plan_step + 2)
         }
       }
     }
@@ -1111,7 +1138,11 @@ function resolve_actions(players) {
                   hact.health = hprev.health
                 }
                 hact.health -= bomb_damage
-                if (hact.health <= 0) hact.dead = true
+                if (hact.health <= 0) {
+                  hact.health = 0
+                  hact.dead = true
+                  hact.action = ACT_DIE
+                }
               }
             }
           }
@@ -1144,7 +1175,11 @@ function resolve_actions(players) {
                     hact.health = hprev.health
                   }
                   hact.health -= 1
-                  if (hact.health <= 0) hact.dead = true
+                  if (hact.health <= 0) {
+                    hact.health = 0
+                    hact.dead = true
+                    hact.action = ACT_DIE
+                  }
                   hit_at = [x, y]
                 }
                 if (hit_at) break
@@ -1178,14 +1213,23 @@ function drawBombBlast(at, z) {
   ellipse(pxX(at[0]), pxY(at[1]), size, size)
 }
 
+function drawBombLaunch(at, z) {
+  fill("black")
+  noStroke()
+  let fac = (2*z - 1)
+  fac = 1 - 0.7*fac*fac
+  textSize(scale * fac)
+  textAlign(CENTER,CENTER)
+  text("💣", pxX(at[0]), pxY(at[1]))
+}
+
 function draw_go() {
   drawMap()
   let t = floor(go_step)
   let tn = floor(go_step) + 1
   let z = go_step - t
   // first, draw agents
-  let drawable_bombs = []
-  let drawable_hits = []
+  let where = {prebomb: [], bomb: [], hit: [], scan: [], die: []}
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
@@ -1205,28 +1249,43 @@ function draw_go() {
         strokeWeight(scale / 2)
         drawScan([x, y], scan_to)
         pop()
+        where.scan.push(act.at)
         if (act.scan_hit_at) {
-          drawable_hits.push(scan_to)
+          where.hit.push(scan_to)
         }
       }
       if (act.action == ACT_BOMB) {
-        drawable_bombs.push(act.target)
+        where.bomb.push(act.target)
+      }
+      if (act.action == ACT_PREBOMB) {
+        let bx = act.target[0]
+        let by = act.target[1]
+        where.prebomb.push([lerp(x,bx,z),lerp(y,by,z)])
+      }
+      if (act.action == ACT_DIE) {
+        where.die.push(act.at)
       }
     }
   }
   // then, draw actions
-  for (const loc of drawable_hits) {
+  for (const loc of where.hit) {
     drawHit(loc, z)
   }
-  for (const loc of drawable_bombs) {
+  for (const loc of where.bomb) {
     drawBombBlast(loc, z)
+  }
+  for (const loc of where.prebomb) {
+    drawBombLaunch(loc, z)
   }
   if (!go_paused) {
     let go_dt = go_acts_per_sec / frameRate()
     // if reached a new action step
     if (floor(go_step) != floor(go_step - go_dt)) {
-      if (drawable_hits.length > 0) sounds.hit.play()
-      if (drawable_bombs.length > 0) sounds.bomb.play()
+      if (where.scan.length > 0) sounds.scan.play()
+      if (where.hit.length > 0) sounds.hit.play()
+      if (where.bomb.length > 0) sounds.bomb.play()
+      if (where.prebomb.length > 0) sounds.launch.play()
+      if (where.die.length > 0) sounds.death.play()
     }
     if (go_step == n_actions) go_paused = true
     go_step = min(go_step + go_dt, n_actions)
