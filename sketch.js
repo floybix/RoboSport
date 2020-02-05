@@ -17,8 +17,9 @@ const starting_health = 4
 const bomb_damage = 3
 const bomb_range = 5
 const bomb_radius = 1
-const ground_color = "#2f8136"
+const ground_color = "#865e40" //"#2f8136"
 const wall_color = "#867e7f"
+const bg_color = "darkslategrey"
 const team_color = {
   A: "cornflowerblue",
   B: "mediumorchid"
@@ -51,6 +52,7 @@ let tilesheet
 let tilesize = 32 // px
 // tile index offsets to look up terrain type in sheet
 let tile_origin = { wall: [15, 0], rough: [26, 14] }
+//let tile_origin = { wall: [21, 32], rough: [27, 0] }
 let filled_tiles = [[1, 3], [0, 5], [1, 5], [2, 5]]
 // look up by terrain transitions along edges:
 // W,N,E,S in order encoded as binary
@@ -97,6 +99,7 @@ let tile_corners =
 
 function preload() {
   tilesheet = loadImage("assets/bricks-v5.png")
+  //tilesheet = loadImage("assets/terrain-v7.png")
   soundFormats('mp3', 'ogg')
   sounds.hit = loadSound("assets/476740_shot.mp3")
   sounds.bomb = loadSound("assets/110113_bomb.mp3")
@@ -334,7 +337,7 @@ function drawPreBombAction(at) {
 }
 
 function drawMap() {
-  background(wall_color);
+  background(bg_color);
   stroke("black")
   strokeWeight(1)
   noStroke()
@@ -528,7 +531,7 @@ function init_config() {
 }
 
 function draw_config() {
-  background(wall_color);
+  background(bg_color);
   textAlign(CENTER, CENTER)
   fill("white")
   textSize(40)
