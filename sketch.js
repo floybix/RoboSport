@@ -50,8 +50,8 @@ let sounds = {}
 let tilesheet
 let tilesize = 32 // px
 // tile index offsets to look up terrain type in sheet
-let tile_origin = { wall: [15, 0] }
-let filled_tiles = [[1, 3], [0, 5], [1, 5], [2, 5], [2, 6]]
+let tile_origin = { wall: [15, 0], rough: [26, 14] }
+let filled_tiles = [[1, 3], [0, 5], [1, 5], [2, 5]]
 // look up by terrain transitions along edges:
 // W,N,E,S in order encoded as binary
 // 
@@ -175,9 +175,15 @@ function isWall(the_map, ix, iy) {
   return it && (it.terrain == "wall")
 }
 
-function addToWall(m, ix, iy) {
-  m[ix][iy] = { terrain: "wall" }
-  if (random() < 0.33) { return (m) }
+function isTerrain(the_map, ix, iy, type) {
+  let it = the_map[ix][iy]
+  return it && (it.terrain == type)
+}
+
+function addToWall(m, ix, iy, n, type) {
+  m[ix][iy] = { terrain: type }
+  //if (random() < 0.33) { return (m) }
+  if (n == 0) { return m }
   let choices = []
   if (ix + 1 < nx - 2) choices.push([ix + 1, iy])
   if (iy + 1 < ny - 2) choices.push([ix, iy + 1])
@@ -185,7 +191,7 @@ function addToWall(m, ix, iy) {
   if (iy - 1 >= 2) choices.push([ix, iy - 1])
   let i, j
   [i, j] = random(choices)
-  return (addToWall(m, i, j))
+  return addToWall(m, i, j, n - 1, type)
 }
 
 function generateMap() {
@@ -199,54 +205,78 @@ function generateMap() {
     m[0][iy] = { terrain: "wall" }
     m[nx - 1][iy] = { terrain: "wall" }
   }
-  // make internal walls
-  for (let i = 0; i < nx * 1.0; i++) {
+  // make rough ground
+  for (let i = 0; i < nx * 0.8; i++) {
     let x = floor(random(2, nx - 2))
     let y = floor(random(2, ny - 2))
-    m = addToWall(m, x, y)
+    m = addToWall(m, x, y, floor(random(3)), "rough")
+  }
+  // make (internal) walls
+  for (let i = 0; i < nx * 0.9; i++) {
+    let x = floor(random(2, nx - 2))
+    let y = floor(random(2, ny - 2))
+    m = addToWall(m, x, y, floor(random(5)), "wall")
   }
   // block initial line of sight between teams
-  m[floor(nx/2)][1] = {terrain: "wall"}
-  m[floor(nx/2)][ny-2] = {terrain: "wall"}
-  m[1][floor(ny/2)] = {terrain: "wall"}
-  m[nx-2][floor(ny/2)] = {terrain: "wall"}
+  m[floor(nx / 2)][1] = { terrain: "wall" }
+  m[floor(nx / 2)][ny - 2] = { terrain: "wall" }
+  m[1][floor(ny / 2)] = { terrain: "wall" }
+  m[nx - 2][floor(ny / 2)] = { terrain: "wall" }
   return (m)
 }
 
 function calculateTiles(m) {
+  let addvec = function ([x1, y1], [x2, y2]) {
+    return [x1 + x2, y1 + y2]
+  }
+  let wall_origin = tile_origin["wall"]
   for (let ix = 0; ix < nx; ix++) {
-    for (let iy = 0; iy < ny; iy++) {
-      let it = m[ix][iy]
-      if (it && (it.terrain == "wall")) {
-        it.tiles = [random(filled_tiles)]
-        continue
+    m[ix][0].tiles = [addvec(random(filled_tiles), wall_origin)]
+    m[ix][ny - 1].tiles = [addvec(random(filled_tiles), wall_origin)]
+  }
+  for (let iy = 0; iy < ny; iy++) {
+    m[0][iy].tiles = [addvec(random(filled_tiles), wall_origin)]
+    m[nx - 1][iy].tiles = [addvec(random(filled_tiles), wall_origin)]
+  }
+  for (const type of ["rough", "wall"]) {
+    let origin = tile_origin[type]
+    for (let ix = 1; ix < nx - 1; ix++) {
+      for (let iy = 1; iy < ny - 1; iy++) {
+        let it = m[ix][iy]
+        it = it || {}
+        it.tiles = it.tiles || []
+        if (it.terrain == type) {
+          it.tiles.push(addvec(random(filled_tiles), origin))
+          m[ix][iy] = it
+          continue
+        }
+        let We = isTerrain(m, ix - 1, iy, type)
+        let No = isTerrain(m, ix, iy - 1, type)
+        let Ea = isTerrain(m, ix + 1, iy, type)
+        let So = isTerrain(m, ix, iy + 1, type)
+        let edge_seq = [We, No, Ea, So]
+        let edge_index = 0
+        for (let i = 0; i < 4; i++) {
+          edge_index += edge_seq[i] * pow(2, i)
+        }
+        let Nw = isTerrain(m, ix - 1, iy - 1, type)
+        let Ne = isTerrain(m, ix + 1, iy - 1, type)
+        let Se = isTerrain(m, ix + 1, iy + 1, type)
+        let Sw = isTerrain(m, ix - 1, iy + 1, type)
+        let corn_seq = [Nw, Ne, Se, Sw]
+        let corn_index = 0
+        for (let i = 0; i < 4; i++) {
+          corn_index += corn_seq[i] * pow(2, i)
+        }
+        let rel_tiles = tile_edges[edge_index].concat(tile_corners[corn_index])
+        for (const rel_coord of rel_tiles) {
+          it.tiles.push(addvec(rel_coord, origin))
+        }
+        m[ix][iy] = it
       }
-      it = it || {}
-      // at this point we know that we are not on a wall and
-      // therefore not on the edge (edge of map is all walls)
-      let We = isWall(m, ix - 1, iy)
-      let No = isWall(m, ix, iy - 1)
-      let Ea = isWall(m, ix + 1, iy)
-      let So = isWall(m, ix, iy + 1)
-      let edge_seq = [We, No, Ea, So]
-      let edge_index = 0
-      for (let i = 0; i < 4; i++) {
-        edge_index += edge_seq[i] * pow(2, i)
-      }
-      let Nw = isWall(m, ix - 1, iy - 1)
-      let Ne = isWall(m, ix + 1, iy - 1)
-      let Se = isWall(m, ix + 1, iy + 1)
-      let Sw = isWall(m, ix - 1, iy + 1)
-      let corn_seq = [Nw, Ne, Se, Sw]
-      let corn_index = 0
-      for (let i = 0; i < 4; i++) {
-        corn_index += corn_seq[i] * pow(2, i)
-      }
-      it.tiles = tile_edges[edge_index]
-      it.tiles = it.tiles.concat(tile_corners[corn_index])
-      m[ix][iy] = it
     }
   }
+  console.log(m)
 }
 
 function xy_to_grid(x, y) {
@@ -310,16 +340,14 @@ function drawMap() {
   noStroke()
   fill(ground_color)
   rect(pad.l, pad.t, board_width, board_height)
-  // draw walls
-  let sx0 = tile_origin.wall[0] * tilesize
-  let sy0 = tile_origin.wall[1] * tilesize
+  // draw terrain
   for (let ix = 0; ix < nx; ix++) {
     for (let iy = 0; iy < ny; iy++) {
       let it = the_map[ix][iy]
       if (!it) continue
-      for (const [tix, tiy] of it.tiles) {
-        let sx = sx0 + tix * tilesize
-        let sy = sy0 + tiy * tilesize
+      for (const [tile_ix, tile_iy] of it.tiles) {
+        let sx = tile_ix * tilesize
+        let sy = tile_iy * tilesize
         image(tilesheet, pad.l + ix * scale, pad.t + iy * scale,
           scale, scale, sx, sy, tilesize, tilesize)
       }
