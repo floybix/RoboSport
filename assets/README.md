@@ -14,5 +14,8 @@ https://freesound.org/s/137781/
 Launch sound is Public Domain by qubodup:
 https://freesound.org/s/162361/
 
-Death sound is CC_BY by psychedelic_hands:
+Death sound is CC-BY by psychedelic_hands:
 https://freesound.org/s/144469/
+
+Walk sound is CC-BY by ErikH2000:
+https://freesound.org/s/178345/

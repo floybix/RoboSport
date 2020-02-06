@@ -17,12 +17,14 @@ const starting_health = 4
 const bomb_damage = 3
 const bomb_range = 5
 const bomb_radius = 1
-const ground_color = "#865e40" //"#2f8136"
+const ground_color = "#996b4a" //"#2f8136"
 const wall_color = "#867e7f"
 const bg_color = "darkslategrey"
 const team_color = {
   A: "cornflowerblue",
-  B: "mediumorchid"
+  B: "mediumorchid",
+  C: "palegoldenrod",
+  D: "white"
 }
 const MODE_CONFIG = -1
 const MODE_WAIT_PLAN = 1
@@ -31,12 +33,12 @@ const MODE_WAIT_GO = 3
 const MODE_GO = 4
 const MODE_END = 5
 
-const ACT_MOVE = 0
-const ACT_SCAN = 1
-const ACT_BOMB = 2
-const ACT_PREBOMB = 3
+const ACT_MOVE = 1
+const ACT_SCAN = 2
+const ACT_BOMB = 3
+const ACT_PREBOMB = 4
 const ACT_DIE = 9
-const act_symbols = ["👣", "🔊", "💣", "🔜"]
+const act_symbols = ["?", "👣", "🔊", "💣", "🔜"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
 let mode = MODE_CONFIG
@@ -48,6 +50,7 @@ let players = {}
 let next_players = {}
 let scale, board_width, board_height
 let sounds = {}
+
 let tilesheet
 let tilesize = 32 // px
 // tile index offsets to look up terrain type in sheet
@@ -97,8 +100,22 @@ let tile_corners =
   [[2, 2]], [[2, 2], [2, 4]], [[2, 2], [0, 4]], [[2, 2], [2, 4], [0, 4]],
   [[2, 2], [0, 2]], [[2, 2], [2, 4], [0, 2]], [[2, 2], [0, 4], [0, 2]], [[2, 2], [2, 4], [0, 4], [0, 2]]]
 
+let spritesheets
+let spritesize = 64
+let spriteframes = 4
+// gives the y index into spritesheet for various poses:
+let spritey = {
+  left: 0, right: 1, down: 2, up: 3
+}
+
 function preload() {
   tilesheet = loadImage("assets/bricks-v5.png")
+  spritesheets = {
+    A: loadImage("assets/guardBlue64.png"),
+    B: loadImage("assets/guardPurple64.png"),
+    C: loadImage("assets/guardYellow64.png"),
+    D: loadImage("assets/guardWhite64.png")
+  }
   //tilesheet = loadImage("assets/terrain-v7.png")
   soundFormats('mp3', 'ogg')
   sounds.hit = loadSound("assets/476740_shot.mp3")
@@ -106,11 +123,13 @@ function preload() {
   sounds.scan = loadSound("assets/137781_scan.mp3")
   sounds.launch = loadSound("assets/162361_launch.mp3")
   sounds.death = loadSound("assets/144469_death.mp3")
-  sounds.hit.setVolume(1.5)
-  sounds.bomb.setVolume(0.7)
+  sounds.walk = loadSound("assets/178345_walk.mp3")
 }
 
 function setup() {
+  sounds.hit.setVolume(1.6)
+  sounds.bomb.setVolume(0.5)
+  sounds.walk.setVolume(0.5)
   createCanvas(750, 750);
   frameRate(30)
   let free_height = height - pad.t - pad.b
@@ -144,6 +163,7 @@ function newAgent(loc) {
     at: loc,
     health: starting_health,
     bombs: starting_bombs,
+    facing: "down",
     actions: actions
   }
 }
@@ -279,7 +299,6 @@ function calculateTiles(m) {
       }
     }
   }
-  console.log(m)
 }
 
 function xy_to_grid(x, y) {
@@ -290,6 +309,18 @@ function xy_to_grid(x, y) {
   }
 }
 
+function whichFacing(from, to) {
+  let xa, ya, xb, yb
+  xa = from[0]
+  ya = from[1]
+  xb = to[0]
+  yb = to[1]
+  if (xa < xb) return "right"
+  if (xa > xb) return "left"
+  if (ya > yb) return "up"
+  return "down" // default
+}
+
 function clip_to_board() {
   let ctx = drawingContext
   ctx.beginPath()
@@ -298,6 +329,22 @@ function clip_to_board() {
   ctx.lineTo(pxX(nx - 0.5), pxY(ny - 0.5))
   ctx.lineTo(pxX(-0.5), pxY(ny - 0.5))
   ctx.clip()
+}
+
+function drawAgentFancy(at, facing, action, team, z) {
+  let xi, yi
+  [xi, yi] = at
+  let sheet = spritesheets[team]
+  let sp_yi = spritey[facing]
+  // standing pose is x=1
+  let sp_xi = 1
+  if (action == ACT_MOVE) {
+    sp_xi = floor(z * spriteframes)
+  }
+  image(sheet,
+    pad.l + xi * scale, pad.t + yi * scale, scale, scale,
+    sp_xi * spritesize, sp_yi * spritesize,
+    spritesize, spritesize)
 }
 
 function drawAgent(at) {
@@ -1120,10 +1167,19 @@ function plan_action(targ) {
   if (plan_mode == PMODE_MOVE) {
     let path = shortest_path(plan_graph, curr_loc, targ)
     if (!path) return
+    let prev_loc = curr_loc
     for (let i = 0; i < acts_left; i++) {
       let act = null
       if (path[i]) {
-        act = { action: ACT_MOVE, target: path[i] }
+        let facing = whichFacing(prev_loc, path[i])
+        // face this way while moving to the new position
+        if (plan_step + i == 0) {
+          agent.facing = facing
+        } else {
+          agent.actions[plan_step + i - 1].facing = facing
+        }
+        prev_loc = path[i]
+        act = { action: ACT_MOVE, target: path[i], facing: facing }
       }
       agent.actions[plan_step + i] = act
     }
@@ -1132,8 +1188,9 @@ function plan_action(targ) {
   if (plan_mode == PMODE_SCAN) {
     let sight_to = line_of_sight(curr_loc, targ)
     if (!sight_to) return
+    let facing = whichFacing(curr_loc, sight_to)
     for (let i = 0; i < acts_left; i++) {
-      let act = { action: ACT_SCAN, target: sight_to }
+      let act = { action: ACT_SCAN, target: sight_to, facing: facing }
       agent.actions[plan_step + i] = act
     }
     plan_step = min(n_actions, plan_step + 1)
@@ -1195,7 +1252,7 @@ function draw_wait_go() {
     fill(team_color[team])
     for (const agent of players[team].agents) {
       if (agent.dead) continue
-      drawAgent(agent.at)
+      drawAgentFancy(agent.at, agent.facing, null, team, 0.0)
     }
   }
   // draw overlay message
@@ -1223,11 +1280,12 @@ function mouseClicked_wait_go() {
 let go_step
 let go_paused
 let go_up_to = n_actions + 0.9
-let go_acts_per_sec = 1.8
+let go_acts_per_sec = 1.0
 
 function init_go() {
-  go_step = 0.0
+  go_step = 0.01
   go_paused = true
+  console.log(players)
   resolve_actions(players)
   console.log("post-resolve")
   console.log(players)
@@ -1262,6 +1320,7 @@ function resolve_actions(players) {
         }
         act.dead = act.dead || prev.dead
         act.bombs = prev.bombs
+        act.facing = act.facing || prev.facing
         if ((act.action == ACT_BOMB) && !prev.dead) {
           act.bombs = prev.bombs - 1
           // find who got hit
@@ -1328,7 +1387,7 @@ function resolve_actions(players) {
                     hact.health = 0
                     hact.dead = true
                     // might create a new action past n_actions
-                    hit_agent.actions[t + 1] = { action: ACT_DIE, at: hact.at, dead: true, health: 0 }
+                    hit_agent.actions[t + 1] = { action: ACT_DIE, at: hact.at, dead: true, health: 0, facing: "down" }
                   }
                   hit_at = [x, y]
                 }
@@ -1397,17 +1456,19 @@ function drawHaHa(at, z) {
 function draw_go() {
   drawMap()
   let t = floor(go_step)
-  let tn = min(floor(go_step) + 1, n_actions)
+  let tn = floor(go_step) + 1
   let z = go_step - t
   // first, draw agents
-  let where = { prebomb: [], bomb: [], hit: [], scan: [], die: [], haha: [] }
+  let where = { walk: [], prebomb: [], bomb: [], hit: [], scan: [], die: [], haha: [] }
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
       let act = agent
       if (t > 0) act = agent.actions[t - 1]
       let nact = agent.actions[tn - 1]
-      if (!nact) nact = act
+      if (!nact) {
+        nact = { at: act.at, facing: act.facing, dead: act.dead }
+      }
       if (act.haha == true) {
         where.haha.push(act.at)
       }
@@ -1415,10 +1476,24 @@ function draw_go() {
         where.die.push(act.at)
       }
       if (act.dead) continue
-      let x = lerp(act.at[0], nact.at[0], z)
-      let y = lerp(act.at[1], nact.at[1], z)
-      fill(team_color[team])
-      drawAgent([x, y])
+      // basic walk "animation"
+      let zwalk = z
+      if (z < 0.5) {
+        zwalk = constrain(map(z, 0.05, 0.30, 0, 0.5), 0, 0.5)
+      } else {
+        zwalk = constrain(map(z, 0.55, 0.80, 0.5, 1.0), 0.5, 1.0)
+      }
+      let x = lerp(act.at[0], nact.at[0], zwalk)
+      let y = lerp(act.at[1], nact.at[1], zwalk)
+      let moving_x = (act.at[0] != nact.at[0])
+      let moving_y = (act.at[1] != nact.at[1])
+      // add v bounce
+      if ((nact.action == ACT_MOVE) && moving_x)
+        y -= 0.05 * pow(sin(z * TWO_PI), 4)
+      drawAgentFancy([x, y], act.facing, nact.action, team, z)
+      if (nact.action == ACT_MOVE) {
+        where.walk.push([x, y])
+      }
       if (act.action == ACT_SCAN) {
         let scan_to = act.scan_hit_at || act.target
         push()
@@ -1462,6 +1537,7 @@ function draw_go() {
     // if reached a new action step
     if (floor(go_step) != floor(go_step - go_dt)) {
       if (where.scan.length > 0) sounds.scan.play()
+      if (where.walk.length > 0) sounds.walk.play()
       if (where.hit.length > 0) sounds.hit.play()
       if (where.bomb.length > 0) sounds.bomb.play()
       if (where.prebomb.length > 0) sounds.launch.play()
@@ -1520,6 +1596,7 @@ function go_done() {
       agent.dead = a.dead
       agent.health = a.health
       agent.bombs = a.bombs
+      agent.facing = a.facing
       agent.actions = []
     }
   }
