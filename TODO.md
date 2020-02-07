@@ -4,5 +4,4 @@
 * increase / variable number of agents
 * variable number of players 2/3/4
 * recognise win state / allow restart
-* argghh
-* firing animation
+* implement restart

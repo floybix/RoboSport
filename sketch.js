@@ -105,7 +105,8 @@ let spritesize = 64
 let spriteframes = 4
 // gives the y index into spritesheet for various poses:
 let spritey = {
-  left: 0, right: 1, down: 2, up: 3
+  left: 0, right: 1, down: 2, up: 3,
+  leftfire: 9, rightfire: 10, downfire: 6, upfire: 3
 }
 
 function preload() {
@@ -331,14 +332,15 @@ function clip_to_board() {
   ctx.clip()
 }
 
-function drawAgentFancy(at, facing, action, team, z) {
+function drawAgentFancy(at, facing, fire, animate, team, z) {
   let xi, yi
   [xi, yi] = at
   let sheet = spritesheets[team]
-  let sp_yi = spritey[facing]
+  let pose = facing + (fire ? "fire" : "")
+  let sp_yi = spritey[pose]
   // standing pose is x=1
   let sp_xi = 1
-  if (action == ACT_MOVE) {
+  if (animate) {
     sp_xi = floor(z * spriteframes)
   }
   image(sheet,
@@ -425,6 +427,8 @@ function switchMode(new_mode) {
     init_plan()
   } else if (mode == MODE_GO) {
     init_go()
+  } else if (mode == MODE_END) {
+    init_end()
   }
 }
 
@@ -760,8 +764,15 @@ let plan_graph
 
 function init_plan() {
   plan_step = 0
-  plan_agent = 0
   plan_mode = PMODE_MOVE
+  plan_agent = 0
+  for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[turn].agents[ai]
+    if (!agent.dead) {
+      plan_agent = ai
+      break
+    }
+  }
   generate_plan_graph()
   // set up buttons
   for (let i = 0; i < plan_buttons.length; i++) {
@@ -1100,6 +1111,8 @@ function mouseClicked_plan() {
     // bottom panel
     let all_done = true
     for (let ai = 0; ai < n_agents; ai++) {
+      let agent = players[turn].agents[ai]
+      if (agent.dead) continue
       let idone = players[turn].agents[ai].actions[n_actions - 1]
       all_done = all_done && idone
     }
@@ -1252,7 +1265,7 @@ function draw_wait_go() {
     fill(team_color[team])
     for (const agent of players[team].agents) {
       if (agent.dead) continue
-      drawAgentFancy(agent.at, agent.facing, null, team, 0.0)
+      drawAgentFancy(agent.at, agent.facing, false, false, team, 0.0)
     }
   }
   // draw overlay message
@@ -1298,6 +1311,7 @@ function resolve_actions(players) {
     for (const team of Object.keys(players)) {
       for (let ai = 0; ai < n_agents; ai++) {
         let agent = players[team].agents[ai]
+        if (agent.dead) continue
         // agent object stands in for the first state (action)
         let prev = (t > 0) ? agent.actions[t - 1] : agent
         let act = agent.actions[t]
@@ -1311,6 +1325,7 @@ function resolve_actions(players) {
     for (const team of Object.keys(players)) {
       for (let ai = 0; ai < n_agents; ai++) {
         let agent = players[team].agents[ai]
+        if (agent.dead) continue
         // agent object stands in for the first state (action)
         let prev = (t > 0) ? agent.actions[t - 1] : agent
         let act = agent.actions[t]
@@ -1329,6 +1344,7 @@ function resolve_actions(players) {
           for (const hit_team of Object.keys(players)) {
             for (let hi = 0; hi < n_agents; hi++) {
               let hit_agent = players[hit_team].agents[hi]
+              if (hit_agent.dead) continue
               let hact = hit_agent.actions[t]
               let hprev = (t > 0) ? hit_agent.actions[t - 1] : hit_agent
               hact.dead = hact.dead || hprev.dead
@@ -1372,12 +1388,14 @@ function resolve_actions(players) {
               if (hit_team == team) continue
               for (let hi = 0; hi < n_agents; hi++) {
                 let hit_agent = players[hit_team].agents[hi]
+                if (hit_agent.dead) continue
                 let hact = hit_agent.actions[t]
                 let hprev = (t > 0) ? hit_agent.actions[t - 1] : hit_agent
                 hact.dead = hact.dead || hprev.dead
                 if (hact.dead) continue
                 if (hact.at.toString() == [x, y].toString()) {
                   hact.hit = true
+                  act.fire = true
                   if (typeof hact.health == 'undefined') {
                     hact.health = hprev.health
                   }
@@ -1408,7 +1426,7 @@ function drawHit(at, z) {
   noStroke()
   let col = lerpColor(color("white"), color("black"), z)
   fill(col)
-  let fullsize = scale
+  let fullsize = scale * 0.8
   let size = lerp(fullsize * 1.0, fullsize * 0.0, z)
   ellipse(pxX(at[0]), pxY(at[1]), size, size)
   textSize(size)
@@ -1418,6 +1436,7 @@ function drawHit(at, z) {
 function drawBombBlast(at, z) {
   noStroke()
   let col = lerpColor(color("yellow"), color("red"), z)
+  col.setAlpha((1 - z * z) * 100)
   fill(col)
   let fullsize = (1 + bomb_radius * 2) * scale
   let size = lerp(fullsize * 0.7, fullsize * 1.2, z)
@@ -1435,22 +1454,37 @@ function drawBombLaunch(at, z) {
 }
 
 function drawDeath(at, z) {
-  fill("black")
+  push()
+  let c = color("black")
+  c.setAlpha((1 - z * z) * 100)
+  fill(c)
+  ellipse(pxX(at[0]), pxY(at[1]), scale * (1 - z), scale * (1 - z))
   noStroke()
-  textSize(scale * (1 + z))
-  text("💀", pxX(at[0]), pxY(at[1]))
+  strokeWeight(1)
+  textSize(scale * 0.5)
+  textAlign(LEFT, CENTER)
+  textStyle(BOLD)
+  text("ARGGHH".slice(0, floor(z * 7)),
+    pxX(at[0]), pxY(at[1] - 0.5))
+  pop()
 }
 
 function drawHaHa(at, z) {
-  let c = color("white")
-  c.setAlpha((1 - z * z) * 100)
+  push()
+  let c = color("yellow")
+  //c.setAlpha((1 - z * z) * 100)
   fill(c)
-  stroke("black")
   noStroke()
+  strokeWeight(1)
   textSize(scale * 0.5)
   textAlign(CENTER, CENTER)
-  text("Ha", pxX(at[0]), pxY(at[1] - z))
-  text("Ha", pxX(at[0] + 0.5), pxY(at[1] + 0.5 - z))
+  textStyle(BOLD)
+  text("Ha", pxX(at[0] - 0.2), pxY(at[1] - z))
+  if (z > 0.3)
+    text("Ha", pxX(at[0] + 0.4), pxY(at[1] + 0.5 - z))
+  if (z > 0.6)
+    text("Ha", pxX(at[0] + 0.1), pxY(at[1] + 1.0 - z))
+  pop()
 }
 
 function draw_go() {
@@ -1463,16 +1497,17 @@ function draw_go() {
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
+      if (agent.dead) continue
       let act = agent
       if (t > 0) act = agent.actions[t - 1]
       let nact = agent.actions[tn - 1]
-      if (!nact) {
+      if (!nact || !nact.at) {
         nact = { at: act.at, facing: act.facing, dead: act.dead }
       }
       if (act.haha == true) {
         where.haha.push(act.at)
       }
-      if (act.action == ACT_DIE) {
+      if (nact.action == ACT_DIE) {
         where.die.push(act.at)
       }
       if (act.dead) continue
@@ -1490,7 +1525,8 @@ function draw_go() {
       // add v bounce
       if ((nact.action == ACT_MOVE) && moving_x)
         y -= 0.05 * pow(sin(z * TWO_PI), 4)
-      drawAgentFancy([x, y], act.facing, nact.action, team, z)
+      let animate = (nact.action == ACT_MOVE) || act.fire
+      drawAgentFancy([x, y], act.facing, act.fire, animate, team, z)
       if (nact.action == ACT_MOVE) {
         where.walk.push([x, y])
       }
@@ -1588,19 +1624,26 @@ function mouseClicked_go() {
 }
 
 function go_done() {
+  let alive_teams = {}
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
       let a = agent.actions[n_actions - 1]
+      agent.dead = agent.dead || a.dead
+      if (agent.dead) continue
+      alive_teams[team] = true
       agent.at = a.at
-      agent.dead = a.dead
       agent.health = a.health
       agent.bombs = a.bombs
       agent.facing = a.facing
       agent.actions = []
     }
   }
-  switchMode(MODE_WAIT_PLAN)
+  if (alive_teams.keys().length >= 2) {
+    switchMode(MODE_WAIT_PLAN)
+  } else {
+    switchMode(MODE_END)
+  }
 }
 
 function keyPressed_go() {
@@ -1623,4 +1666,64 @@ function keyPressed_go() {
     go_acts_per_sec /= 1.2
   }
   return false
+}
+
+// END
+
+let end_buttons =
+  [{
+    label: "restart",
+    what: "restart"
+  }]
+
+function init_end() {
+  // set up buttons
+  let nb = end_buttons.length
+  for (let i = 0; i < end_buttons.length; i++) {
+    b = end_buttons[i]
+    b.width = 140
+    b.height = 30
+    b.y = height / 2 + i * 2 * b.height
+    b.x = 60
+  }
+}
+
+function draw_end() {
+  background(bg_color);
+  textAlign(CENTER, CENTER)
+  fill("white")
+  textSize(40)
+  text("RoboSport", width / 2, height * 0.15)
+  textAlign(CENTER, CENTER)
+  textSize(16)
+  for (const b of end_buttons) {
+    fill(color(0, 0, 75))
+    rect(b.x, b.y, b.width, b.height)
+    fill("black")
+    textAlign(CENTER, CENTER)
+    text(b.label, b.x + b.width / 2, b.y + b.height / 2)
+    fill("white")
+    textAlign(LEFT, CENTER)
+    text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
+  }
+}
+
+function mouseClicked_end() {
+  for (const b of end_buttons) {
+    if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+      (b.y < mouseY) && (mouseY < b.y + b.height)) {
+      if (b.what == "restart") {
+        if (multiplayer == MULTI_HOTSEAT) {
+          restart()
+        } else {
+          if (is_host) {
+            restart()
+          } else {
+            // TODO
+          }
+        }
+        switchMode(MODE_WAIT_PLAN)
+      }
+    }
+  }
 }
