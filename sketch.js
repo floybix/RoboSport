@@ -42,7 +42,8 @@ const act_symbols = ["?", "👣", "🔊", "💣", "🔜"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
 let mode = MODE_CONFIG
-let turn = "A"
+let turn_number = 1
+let curr_team = "A"
 // map is a 2d array. elements are like {terrain: "wall", tiles: [coord1,...]} (see below)
 // terrain is null for open ground
 let the_map
@@ -170,9 +171,9 @@ function newAgent(loc) {
 }
 
 function restart() {
+  turn_number = 1
   the_map = generateMap()
   calculateTiles(the_map)
-  turn = "A"
   players.A = {
     agents: [newAgent([1, 1]),
     newAgent([1, 2])]
@@ -406,7 +407,7 @@ function drawMap() {
     }
   }
   // draw grid
-  stroke(color(0, 0, 0, 25))
+  stroke(color(0, 0, 0, 5))
   for (let ix = 0; ix <= nx; ix++) {
     line(pad.l + ix * scale, pad.t,
       pad.l + ix * scale, pad.t + board_height)
@@ -504,13 +505,18 @@ function initChat() {
 
 function recvMsg(msg) {
   if (msg.type == "init") {
-    the_map = msg.the_map
-    turn = msg.turn
-    switchMode(msg.mode)
+    curr_team = msg.curr_team
     removeElements()
     initChat()
+    addToChatLog('<p class="syschat">' + "Connected..." + '</p>')
+  }
+  if (msg.type == "restart") {
+    restart()
+    the_map = msg.the_map
+    switchMode(msg.mode)
   }
   if (msg.type == "chat") {
+    // TODO: rebroadcast if host
     addToChatLog('<p>' + msg.text + '</p>')
   }
   if (msg.type == "turndone") {
@@ -640,6 +646,11 @@ function setup_remote_multi() {
             clientsdiv.child(createDiv(conn.label))
             conn.on('data', recvMsg)
             conn.on('close', connClosed)
+            let msg = {
+              type: "init",
+              curr_team: "B" // TODO - next team
+            }
+            peer_conn.send(msg)
             if (good_to_go) { return }
             good_to_go = true
             let gobutt = createButton("Begin game")
@@ -648,15 +659,15 @@ function setup_remote_multi() {
             gobutt.mousePressed(function () {
               nick = nick_input.value()
               nick_input.hide()
-              turn = "A"
-              switchMode(MODE_WAIT_PLAN)
+              curr_team = "A"
+              // TODO: broadcast
               let msg = {
-                type: "init",
-                turn: "B",
-                mode: mode,
-                the_map: the_map
+                type: "restart",
+                the_map: the_map,
+                mode: MODE_WAIT_PLAN
               }
               peer_conn.send(msg)
+              switchMode(MODE_WAIT_PLAN)
               removeElements()
               initChat()
             })
@@ -678,14 +689,9 @@ function setup_remote_multi() {
           peer_conn = conn
           conn.on('open', function () {
             // we're good to go
+            nick = nick_input.value()
             conn.on('data', recvMsg)
             conn.on('close', connClosed)
-            nick = nick_input.value()
-            nick_input.hide()
-            table.child(createDiv())
-            let waitingdiv = createDiv("<p>Hosted 🎉</p><p>Waiting for game to start...</p>")
-            waitingdiv.class("waiting")
-            table.child(waitingdiv)
           })
         })
       }
@@ -728,7 +734,7 @@ function draw_wait_plan() {
   textAlign(CENTER, CENTER)
   fill("white")
   textSize(50)
-  text("Player " + turn, width / 2, height / 2)
+  text("Player " + curr_team, width / 2, height / 2)
   textSize(30)
   text("Plan your moves", width / 2, height / 2 + 100)
   text("(click)", width / 2, height / 2 + 150)
@@ -767,7 +773,7 @@ function init_plan() {
   plan_mode = PMODE_MOVE
   plan_agent = 0
   for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     if (!agent.dead) {
       plan_agent = ai
       break
@@ -805,7 +811,7 @@ function generate_plan_graph() {
 function current_plan_locs() {
   let curr_locs = []
   for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     curr_locs[ai] = agent.at
     for (let j = 0; j < plan_step; j++) {
       act = agent.actions[j]
@@ -855,7 +861,7 @@ function draw_plan() {
   // draw opponent
   stroke("black")
   strokeWeight(1)
-  let opp = (turn == "A") ? "B" : "A"
+  let opp = (curr_team == "A") ? "B" : "A"
   let opponent = players[opp]
   fill(team_color[opp])
   for (const agent of opponent.agents) {
@@ -886,17 +892,17 @@ function draw_plan() {
   // draw action traces up to this planning step
   for (let ai = 0; ai < n_agents; ai++) {
     stroke((ai == plan_agent) ? "yellow" : "black")
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     if (agent.dead) continue
     let loc = agent.at
-    fill(team_color[turn])
+    fill(team_color[curr_team])
     drawAgent(loc)
     for (let j = 0; j < plan_step; j++) {
       let act = agent.actions[j]
       if (!act) break
       if (act.action == ACT_MOVE) {
         loc = act.target
-        fill(team_color[turn])
+        fill(team_color[curr_team])
         drawAgent(loc)
       }
       if (act.action == ACT_SCAN) {
@@ -914,7 +920,7 @@ function draw_plan() {
   }
   strokeWeight(3)
   for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     if (agent.dead) continue
     stroke((ai == plan_agent) ? "yellow" : "black")
     drawAgent(curr_locs[ai])
@@ -923,12 +929,12 @@ function draw_plan() {
   let curr_loc = curr_locs[plan_agent]
   let xi = curr_loc[0]
   let yi = curr_loc[1]
-  let agent = players[turn].agents[plan_agent]
+  let agent = players[curr_team].agents[plan_agent]
   let acts_left = n_actions - plan_step
   let targ = xy_to_grid(mouseX, mouseY)
   let on_agent = false
   for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     if (agent.dead) continue
     if (targ && (targ.toString() == curr_locs[ai].toString())) {
       on_agent = true
@@ -991,9 +997,9 @@ function draw_plan() {
   let curr_done = false
   let all_done = true
   for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[turn].agents[ai]
+    let agent = players[curr_team].agents[ai]
     if (agent.dead) continue
-    let idone = players[turn].agents[ai].actions[n_actions - 1]
+    let idone = players[curr_team].agents[ai].actions[n_actions - 1]
     if (ai == plan_agent) curr_done = idone
     all_done = all_done && idone
   }
@@ -1046,7 +1052,7 @@ function draw_timeline(agent) {
 }
 
 function n_bombs_left() {
-  let agent = players[turn].agents[plan_agent]
+  let agent = players[curr_team].agents[plan_agent]
   let n = agent.bombs
   for (let i = 0; i < plan_step; i++) {
     if (agent.actions[i].action == ACT_BOMB) n--
@@ -1078,9 +1084,9 @@ function draw_plan_controls() {
   textSize(12)
   text("Switch agent:\n Tab / click on it", 5, height - pad.b - 50)
   // title
-  let agent = players[turn].agents[plan_agent]
+  let agent = players[curr_team].agents[plan_agent]
   textSize(16)
-  text("Player " + turn + "\n→ agent " + (plan_agent + 1) + "\n (health " + agent.health + ")", 5, 20)
+  text("Player " + curr_team + "\n→ agent " + (plan_agent + 1) + "\n (health " + agent.health + ")", 5, 20)
 }
 
 function mouseClicked_plan() {
@@ -1102,7 +1108,7 @@ function mouseClicked_plan() {
     if ((0 <= step) && (step <= n_actions)) {
       plan_step = step
       // constrain to programmed steps
-      let agent = players[turn].agents[plan_agent]
+      let agent = players[curr_team].agents[plan_agent]
       while ((plan_step > 0) && !agent.actions[plan_step - 1]) {
         plan_step -= 1
       }
@@ -1111,9 +1117,9 @@ function mouseClicked_plan() {
     // bottom panel
     let all_done = true
     for (let ai = 0; ai < n_agents; ai++) {
-      let agent = players[turn].agents[ai]
+      let agent = players[curr_team].agents[ai]
       if (agent.dead) continue
-      let idone = players[turn].agents[ai].actions[n_actions - 1]
+      let idone = players[curr_team].agents[ai].actions[n_actions - 1]
       all_done = all_done && idone
     }
     if (all_done) {
@@ -1139,7 +1145,7 @@ function mouseClicked_plan() {
 
 function switchPlanAgent(ai) {
   plan_agent = ai
-  actions = players[turn].agents[ai].actions
+  actions = players[curr_team].agents[ai].actions
   while ((plan_step > 0) && !actions[plan_step - 1]) {
     plan_step -= 1
   }
@@ -1147,24 +1153,24 @@ function switchPlanAgent(ai) {
 
 function turn_done_clicked() {
   if (multiplayer == MULTI_HOTSEAT) {
-    if (turn == "A") {
-      turn = "B"
+    if (curr_team == "A") {
+      curr_team = "B"
       switchMode(MODE_WAIT_PLAN)
     } else {
-      turn = "A"
+      curr_team = "A"
       switchMode(MODE_WAIT_GO)
     }
   } else {
     // REMOTE
     switchMode(MODE_WAIT_GO)
     if (is_host) {
-      next_players[turn] = players[turn]
+      next_players[curr_team] = players[curr_team]
       checkAllDone()
     } else {
       let msg = {
         type: "turndone",
-        player_key: turn,
-        player: players[turn]
+        player_key: curr_team,
+        player: players[curr_team]
       }
       peer_conn.send(msg)
     }
@@ -1174,7 +1180,7 @@ function turn_done_clicked() {
 function plan_action(targ) {
   let curr_locs = current_plan_locs()
   let curr_loc = curr_locs[plan_agent]
-  let agent = players[turn].agents[plan_agent]
+  let agent = players[curr_team].agents[plan_agent]
   let acts_left = n_actions - plan_step
 
   if (plan_mode == PMODE_MOVE) {
@@ -1236,7 +1242,7 @@ function keyPressed_plan() {
   }
   if (key == "ArrowRight") {
     if (plan_step == n_actions) return
-    let agent = players[turn].agents[plan_agent]
+    let agent = players[curr_team].agents[plan_agent]
     if (agent.actions[plan_step]) {
       plan_step += 1
     }
@@ -1610,7 +1616,7 @@ function drawGoTimeline() {
   strokeWeight(1)
   text(floor(go_step), map(go_step, 0, go_up_to, pad.l, width - pad.r), pad.t / 4)
   textSize(24)
-  text("Turn " + 1, pad.l / 2, pad.t / 2)
+  text("Turn " + turn_number, pad.l / 2, pad.t / 2)
 }
 
 function mouseClicked_go() {
@@ -1623,8 +1629,11 @@ function mouseClicked_go() {
   }
 }
 
+let winner
+
 function go_done() {
   let alive_teams = {}
+  winner = ""
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
@@ -1639,9 +1648,11 @@ function go_done() {
       agent.actions = []
     }
   }
-  if (alive_teams.keys().length >= 2) {
+  if (Object.keys(alive_teams).length >= 2) {
+    turn_number++
     switchMode(MODE_WAIT_PLAN)
   } else {
+    winner = Object.keys(alive_teams)[0]
     switchMode(MODE_END)
   }
 }
@@ -1695,16 +1706,17 @@ function draw_end() {
   textSize(40)
   text("RoboSport", width / 2, height * 0.15)
   textAlign(CENTER, CENTER)
+  textSize(60)
+  text("🏆", width / 2, height * 0.3)
   textSize(16)
+  fill("yellow")
+  text(winner ? "Team " + winner : "No winner!", width / 2, height * 0.4)
   for (const b of end_buttons) {
     fill(color(0, 0, 75))
     rect(b.x, b.y, b.width, b.height)
     fill("black")
     textAlign(CENTER, CENTER)
     text(b.label, b.x + b.width / 2, b.y + b.height / 2)
-    fill("white")
-    textAlign(LEFT, CENTER)
-    text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
   }
 }
 
@@ -1718,6 +1730,17 @@ function mouseClicked_end() {
         } else {
           if (is_host) {
             restart()
+            // broadcast
+            for (let team of Object.keys(players)) {
+              if (team == curr_team) continue
+              let msg = {
+                type: "init",
+                curr_team: team,
+                mode: MODE_WAIT_PLAN,
+                the_map: the_map
+              }
+              peer_conn.send(msg)
+            }
           } else {
             // TODO
           }
