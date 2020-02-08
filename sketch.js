@@ -24,7 +24,7 @@ const team_keys = ["A", "B", "C", "D"]
 const team_color = {
   A: "cornflowerblue",
   B: "mediumorchid",
-  C: "palegoldenrod",
+  C: "khaki",
   D: "white"
 }
 const MODE_CONFIG = -1
@@ -198,7 +198,6 @@ function restart(np) {
       players[team].agents.push(newAgent([x + ai * dx, y + ai * dy]))
     }
   }
-  console.log(players)
 }
 
 function emptyGrid() {
@@ -508,7 +507,7 @@ function initChat() {
     (event) => {
       let txt = chat_box.value()
       if (txt.trim().length > 0) {
-        txt = nick + ": " + txt
+        txt = '<span style="background:' + team_color[curr_team] + '">[' + curr_team + ']</span> ' + nick + ': ' + txt
         let msg = {
           type: "chat",
           text: txt
@@ -651,14 +650,14 @@ function draw_config() {
       text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
     }
   } else if (!is_host) {
-    text("wait", width/2, height/2)
+    text("wait", width / 2, height / 2)
   }
 }
 
 function setup_remote_multi() {
   let table = createDiv()
   table.class("setup-remote")
-  table.position(width*0.25, height * 0.35)
+  table.position(width * 0.25, height * 0.35)
   table.child(createDiv("Player name:"))
   let nick_input = createInput('')
   table.child(nick_input)
@@ -709,7 +708,7 @@ function setup_remote_multi() {
               // start chat system
               initChat()
               for (const conn of peer_conns)
-                conn.send({type: "init"})
+                conn.send({ type: "init" })
               // now we have a definite number of players
               restart(n_players)
               // broadcast setup to all (other) players
@@ -1675,7 +1674,17 @@ function drawGoTimeline() {
 }
 
 function mouseClicked_go() {
-  if (mouseY > height - pad.b) {
+  if (mouseX < pad.l) {
+    // left sidebar
+  } else if (mouseX > width - pad.r) {
+    // right sidebar
+  } else if (mouseY < pad.t) {
+    // top panel
+    let time_dx = board_width / go_up_to
+    go_step = (mouseX - pad.l) / time_dx
+    go_step = constrain(go_step, 0, go_up_to)
+  } else if (mouseY > height - pad.b) {
+    // bottom panel
     if (go_step >= go_up_to) {
       go_done()
     } else {
