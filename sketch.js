@@ -5,13 +5,13 @@ let multiplayer = null
 let nick = "Anon"
 let peer = null
 let is_host = true
-let peer_conn = null
+let peer_conns = []
 
 const nx = 20
 const ny = 20
 const pad = { l: 100, r: 20, t: 70, b: 50 }
 const n_actions = 10
-const n_agents = 2
+const n_agents = 3
 const starting_bombs = 2
 const starting_health = 4
 const bomb_damage = 3
@@ -20,6 +20,7 @@ const bomb_radius = 1
 const ground_color = "#996b4a" //"#2f8136"
 const wall_color = "#867e7f"
 const bg_color = "darkslategrey"
+const team_keys = ["A", "B", "C", "D"]
 const team_color = {
   A: "cornflowerblue",
   B: "mediumorchid",
@@ -41,12 +42,13 @@ const ACT_DIE = 9
 const act_symbols = ["?", "👣", "🔊", "💣", "🔜"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
+let n_players
 let mode = MODE_CONFIG
 let turn_number = 1
-let curr_team = "A"
+let curr_team = team_keys[0]
 // map is a 2d array. elements are like {terrain: "wall", tiles: [coord1,...]} (see below)
 // terrain is null for open ground
-let the_map
+let the_map = []
 let players = {}
 let next_players = {}
 let scale, board_width, board_height
@@ -147,7 +149,6 @@ function setup() {
   }
   colorMode(HSB, 100)
   switchMode(MODE_CONFIG)
-  restart()
 }
 
 function pxX(xi) {
@@ -170,18 +171,34 @@ function newAgent(loc) {
   }
 }
 
-function restart() {
+function restart(np) {
+  n_players = np
   turn_number = 1
   the_map = generateMap()
   calculateTiles(the_map)
-  players.A = {
-    agents: [newAgent([1, 1]),
-    newAgent([1, 2])]
+  players = {}
+  for (let i = 0; i < n_players; i++) {
+    let team = team_keys[i]
+    players[team] = {}
+    let x, y, dx, dy
+    if (i == 0) {
+      [x, y, dx, dy] = [1, 1, 0, 1]
+    }
+    if (i == 1) {
+      [x, y, dx, dy] = [nx - 2, ny - 2, 0, -1]
+    }
+    if (i == 2) {
+      [x, y, dx, dy] = [nx - 2, 1, 0, 1]
+    }
+    if (i == 3) {
+      [x, y, dx, dy] = [1, ny - 2, 0, -1]
+    }
+    players[team].agents = []
+    for (let ai = 0; ai < n_agents; ai++) {
+      players[team].agents.push(newAgent([x + ai * dx, y + ai * dy]))
+    }
   }
-  players.B = {
-    agents: [newAgent([nx - 2, ny - 2]),
-    newAgent([nx - 2, ny - 3])]
-  }
+  console.log(players)
 }
 
 function emptyGrid() {
@@ -496,28 +513,37 @@ function initChat() {
           type: "chat",
           text: txt
         }
-        addToChatLog('<p class="mychat">' + msg.text + '</p>')
-        peer_conn.send(msg)
+        if (is_host) {
+          addToChatLog('<p class="mychat">' + msg.text + '</p>')
+        }
+        for (const conn of peer_conns)
+          conn.send(msg)
         chat_box.value("")
       }
     })
 }
 
 function recvMsg(msg) {
-  if (msg.type == "init") {
+  if (msg.type == "hello") {
     curr_team = msg.curr_team
     removeElements()
+  }
+  if (msg.type == "init") {
     initChat()
     addToChatLog('<p class="syschat">' + "Connected..." + '</p>')
   }
   if (msg.type == "restart") {
-    restart()
+    restart(msg.n_players)
     the_map = msg.the_map
     switchMode(msg.mode)
   }
   if (msg.type == "chat") {
-    // TODO: rebroadcast if host
     addToChatLog('<p>' + msg.text + '</p>')
+    if (is_host) {
+      // rebroadcast
+      for (const conn of peer_conns)
+        conn.send(msg)
+    }
   }
   if (msg.type == "turndone") {
     next_players[msg.player_key] = msg.player
@@ -539,7 +565,8 @@ function checkAllDone() {
           player_key: k,
           player: next_players[k]
         }
-        peer_conn.send(msg)
+        for (const conn of peer_conns)
+          conn.send(msg)
       }
     }
     players = next_players
@@ -557,10 +584,25 @@ function connClosed() {
 
 let config_buttons =
   [{
-    label: "hotseat",
+    label: "hotseat (2)",
     multi: MULTI_HOTSEAT,
     host: true,
+    n_players: 2,
     desc: "take turns using one screen"
+  },
+  {
+    label: "hotseat (3)",
+    multi: MULTI_HOTSEAT,
+    host: true,
+    n_players: 3,
+    desc: " ... same with 3 players"
+  },
+  {
+    label: "hotseat (4)",
+    multi: MULTI_HOTSEAT,
+    host: true,
+    n_players: 4,
+    desc: " ... same with 4 players"
   },
   {
     label: "remote (host)",
@@ -582,7 +624,7 @@ function init_config() {
     b = config_buttons[i]
     b.width = 140
     b.height = 30
-    b.y = height / 2 + i * 2 * b.height
+    b.y = height * 0.3 + i * 2 * b.height
     b.x = 60
   }
 }
@@ -608,13 +650,15 @@ function draw_config() {
       textAlign(LEFT, CENTER)
       text(b.desc, b.x + b.width + 30, b.y + b.height / 2)
     }
+  } else if (!is_host) {
+    text("wait", width/2, height/2)
   }
 }
 
 function setup_remote_multi() {
   let table = createDiv()
   table.class("setup-remote")
-  table.position(100, height * 0.4)
+  table.position(width*0.25, height * 0.35)
   table.child(createDiv("Player name:"))
   let nick_input = createInput('')
   table.child(nick_input)
@@ -639,18 +683,21 @@ function setup_remote_multi() {
         let clientsdiv = createDiv()
         clientsdiv.id("peer-clients")
         table.child(clientsdiv)
+        // allow multiple clients to connect
         let good_to_go = false
+        n_players = 1
         peer.on('connection', function (conn) {
-          peer_conn = conn
+          peer_conns.push(conn)
           conn.on('open', function () {
             clientsdiv.child(createDiv(conn.label))
             conn.on('data', recvMsg)
             conn.on('close', connClosed)
+            n_players += 1
             let msg = {
-              type: "init",
-              curr_team: "B" // TODO - next team
+              type: "hello",
+              curr_team: team_keys[n_players - 1]
             }
-            peer_conn.send(msg)
+            conn.send(msg)
             if (good_to_go) { return }
             good_to_go = true
             let gobutt = createButton("Begin game")
@@ -658,18 +705,23 @@ function setup_remote_multi() {
             table.child(gobutt)
             gobutt.mousePressed(function () {
               nick = nick_input.value()
-              nick_input.hide()
-              curr_team = "A"
-              // TODO: broadcast
+              removeElements()
+              // start chat system
+              initChat()
+              for (const conn of peer_conns)
+                conn.send({type: "init"})
+              // now we have a definite number of players
+              restart(n_players)
+              // broadcast setup to all (other) players
               let msg = {
                 type: "restart",
                 the_map: the_map,
+                n_players: n_players,
                 mode: MODE_WAIT_PLAN
               }
-              peer_conn.send(msg)
+              for (const conn of peer_conns)
+                conn.send(msg)
               switchMode(MODE_WAIT_PLAN)
-              removeElements()
-              initChat()
             })
           })
         })
@@ -686,7 +738,7 @@ function setup_remote_multi() {
           remote_peer_id = host_id_input.value()
           nick = nick_input.value()
           conn = peer.connect(remote_peer_id, { label: nick })
-          peer_conn = conn
+          peer_conns.push(conn)
           conn.on('open', function () {
             // we're good to go
             nick = nick_input.value()
@@ -707,6 +759,7 @@ function mouseClicked_config() {
         multiplayer = b.multi
         is_host = b.host
         if (multiplayer == MULTI_HOTSEAT) {
+          restart(b.n_players)
           switchMode(MODE_WAIT_PLAN)
         } else {
           setup_remote_multi()
@@ -858,35 +911,36 @@ function line_of_sight(source, target) {
 
 function draw_plan() {
   drawMap()
-  // draw opponent
-  stroke("black")
-  strokeWeight(1)
-  let opp = (curr_team == "A") ? "B" : "A"
-  let opponent = players[opp]
-  fill(team_color[opp])
-  for (const agent of opponent.agents) {
-    if (agent.dead) continue
-    drawAgent(agent.at)
+  // draw opponents
+  for (const opp of Object.keys(players)) {
+    if (opp == curr_team) continue
+    stroke("black")
+    strokeWeight(1)
+    fill(team_color[opp])
+    for (const agent of players[opp].agents) {
+      if (agent.dead) continue
+      drawAgent(agent.at)
+    }
+    // draw cone of possible locations
+    push()
+    clip_to_board()
+    noFill()
+    stroke(team_color[opp])
+    strokeWeight(3)
+    for (const agent of players[opp].agents) {
+      if (agent.dead) continue
+      let xi, yi
+      [xi, yi] = agent.at
+      let d = plan_step + 0.5
+      beginShape()
+      vertex(pxX(xi - d), pxY(yi))
+      vertex(pxX(xi), pxY(yi - d))
+      vertex(pxX(xi + d), pxY(yi))
+      vertex(pxX(xi), pxY(yi + d))
+      endShape(CLOSE)
+    }
+    pop()
   }
-  // draw cone of possible locations
-  push()
-  clip_to_board()
-  noFill()
-  stroke(team_color[opp])
-  strokeWeight(3)
-  for (const agent of opponent.agents) {
-    if (agent.dead) continue
-    let xi, yi
-    [xi, yi] = agent.at
-    let d = plan_step + 0.5
-    beginShape()
-    vertex(pxX(xi - d), pxY(yi))
-    vertex(pxX(xi), pxY(yi - d))
-    vertex(pxX(xi + d), pxY(yi))
-    vertex(pxX(xi), pxY(yi + d))
-    endShape(CLOSE)
-  }
-  pop()
   // figure out current locations of agents
   let curr_locs = current_plan_locs()
   // draw action traces up to this planning step
@@ -1153,11 +1207,12 @@ function switchPlanAgent(ai) {
 
 function turn_done_clicked() {
   if (multiplayer == MULTI_HOTSEAT) {
-    if (curr_team == "A") {
-      curr_team = "B"
+    let curr_i = team_keys.indexOf(curr_team)
+    if (curr_i < n_players - 1) {
+      curr_team = team_keys[curr_i + 1]
       switchMode(MODE_WAIT_PLAN)
     } else {
-      curr_team = "A"
+      curr_team = team_keys[0]
       switchMode(MODE_WAIT_GO)
     }
   } else {
@@ -1172,7 +1227,7 @@ function turn_done_clicked() {
         player_key: curr_team,
         player: players[curr_team]
       }
-      peer_conn.send(msg)
+      peer_conns[0].send(msg)
     }
   }
 }
@@ -1689,7 +1744,8 @@ let end_buttons =
 
 function init_end() {
   // set up buttons
-  let nb = end_buttons.length
+  if ((multiplayer == MULTI_REMOTE) && !is_host)
+    end_buttons = []
   for (let i = 0; i < end_buttons.length; i++) {
     b = end_buttons[i]
     b.width = 140
@@ -1726,26 +1782,25 @@ function mouseClicked_end() {
       (b.y < mouseY) && (mouseY < b.y + b.height)) {
       if (b.what == "restart") {
         if (multiplayer == MULTI_HOTSEAT) {
-          restart()
+          restart(n_players)
+          switchMode(MODE_WAIT_PLAN)
         } else {
           if (is_host) {
-            restart()
-            // broadcast
-            for (let team of Object.keys(players)) {
-              if (team == curr_team) continue
-              let msg = {
-                type: "init",
-                curr_team: team,
-                mode: MODE_WAIT_PLAN,
-                the_map: the_map
-              }
-              peer_conn.send(msg)
+            restart(n_players)
+            let msg = {
+              type: "restart",
+              the_map: the_map,
+              mode: MODE_WAIT_PLAN,
+              n_players: n_players
             }
+            // broadcast
+            for (const conn of peer_conns)
+              conn.send(msg)
+            switchMode(MODE_WAIT_PLAN)
           } else {
-            // TODO
+            // do nothing, wait for host to restart.
           }
         }
-        switchMode(MODE_WAIT_PLAN)
       }
     }
   }
