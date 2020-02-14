@@ -366,10 +366,15 @@ function drawAgentFancy(at, facing, fire, animate, team, z) {
     spritesize, spritesize)
 }
 
-function drawAgent(at) {
+function drawAgent(at, health) {
   let xi, yi
   [xi, yi] = at
+  let frac = health / starting_health
+  arc(pxX(xi), pxY(yi), scale - 3, scale - 3, 0, frac * TWO_PI)
+  push()
+  noFill()
   ellipse(pxX(xi), pxY(yi), scale - 3, scale - 3)
+  pop()
 }
 
 function drawScan(source, target) {
@@ -465,7 +470,7 @@ function draw() {
   }
 }
 
-function mouseClicked() {
+function mouseReleased() {
   if (mode == MODE_CONFIG) {
     mouseClicked_config()
   } else if (mode == MODE_WAIT_PLAN) {
@@ -778,7 +783,7 @@ function draw_wait_plan() {
     fill(team_color[team])
     for (const agent of players[team].agents) {
       if (agent.dead) continue
-      drawAgent(agent.at)
+      drawAgent(agent.at, agent.health)
     }
   }
   // draw overlay message
@@ -918,7 +923,7 @@ function draw_plan() {
     fill(team_color[opp])
     for (const agent of players[opp].agents) {
       if (agent.dead) continue
-      drawAgent(agent.at)
+      drawAgent(agent.at, agent.health)
     }
     // draw cone of possible locations
     push()
@@ -949,14 +954,14 @@ function draw_plan() {
     if (agent.dead) continue
     let loc = agent.at
     fill(team_color[curr_team])
-    drawAgent(loc)
+    drawAgent(loc, agent.health)
     for (let j = 0; j < plan_step; j++) {
       let act = agent.actions[j]
       if (!act) break
       if (act.action == ACT_MOVE) {
         loc = act.target
         fill(team_color[curr_team])
-        drawAgent(loc)
+        drawAgent(loc, agent.health)
       }
       if (act.action == ACT_SCAN) {
         let sight_to = line_of_sight(loc, act.target)
@@ -976,7 +981,7 @@ function draw_plan() {
     let agent = players[curr_team].agents[ai]
     if (agent.dead) continue
     stroke((ai == plan_agent) ? "yellow" : "black")
-    drawAgent(curr_locs[ai])
+    drawAgent(curr_locs[ai], agent.health)
   }
   // status of selected agent
   let curr_loc = curr_locs[plan_agent]
@@ -1003,7 +1008,7 @@ function draw_plan() {
         fill(highlight)
         noStroke()
         for (let i = 0; i < min(path.length, acts_left); i++) {
-          drawAgent(path[i])
+          drawAgent(path[i], starting_health)
         }
       }
     }
