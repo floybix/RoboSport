@@ -1,3 +1,5 @@
+// For performance:
+p5.disableFriendlyErrors = true
 
 const MULTI_HOTSEAT = 1
 const MULTI_REMOTE = 2
@@ -17,8 +19,8 @@ const starting_health = 4
 const bomb_damage = 3
 const bomb_range = 5
 const bomb_radius = 1
-const ground_color = "#2f8136" //  "#996b4a"
-const ground2_color = "darkgreen"
+const ground_color = "darkgreen"
+const ground2_color = "#2f8136"
 const wall_color = "#867e7f"
 const wall_stroke = "#444444"
 const bg_color = "darkslategrey"
@@ -333,21 +335,25 @@ function drawMap(t) {
   noStroke()
   let ground_c = color(ground_color)
   let ground2_c = color(ground2_color)
+  fill(ground_c)
   rect(pad.l, pad.t, board_width, board_height)
+  let windtile = scale * 0.5 + 0.5
   let tvary = (sin(t * 0.005) + 1.0) * 0.5
+  let x,y,nscale,z
   for (let iy = 0.0; iy < ny; iy += 0.5) {
     for (let ix = 0.0; ix < nx; ix += 0.5) {
-      let x = pad.l + ix * scale
-      let y = pad.t + iy * scale
-      let nscale = 10.0 * noise(iy / ny, t * 0.1)
-      let z =
-        sin(nscale * ix / nx - t * 1.0) *
-        sin(nscale * iy / ny - tvary)
+      nscale = 10.0 * noise(iy / ny, t * 0.1)
+      z =
+        Math.sin(nscale * ix / nx - t * 1.0) *
+        Math.sin(nscale * iy / ny - tvary)
       z = (z + 1.0) * 0.5
-      z = 1.0 - pow(z, 4)
-      let zcol = lerpColor(ground_c, ground2_c, z)
-      fill(zcol)
-      rect(x, y, scale / 2 + 1, scale / 2 + 1)
+      z = Math.pow(z, 6)
+      if (z < 0.02) continue
+      ground2_c.setAlpha(z*100)
+      fill(ground2_c)
+      x = pad.l + ix * scale
+      y = pad.t + iy * scale
+      rect(x, y, windtile, windtile)
     }
   }
   // draw terrain
