@@ -30,8 +30,13 @@
 #chat-box {
   font-size: 16px;
   display: block;
-  width: 90%;
+  width: 85%;
   border: 1px solid black;
+  display: inline-block;
+}
+
+#chat-btn {
+  margin-left: 1ex;
 }
 
 #chat-log {

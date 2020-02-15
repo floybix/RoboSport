@@ -331,17 +331,30 @@ function drawPreBombAction(at) {
 
 function drawMap(t) {
   background(bg_color);
-  // draw grass with wind effect
+  // draw grass
   noStroke()
   let ground_c = color(ground_color)
   let ground2_c = color(ground2_color)
   fill(ground_c)
   rect(pad.l, pad.t, board_width, board_height)
-  let windtile = scale * 0.5 + 0.5
+  // draw grid
+  stroke(color(0, 0, 0, 5))
+  strokeWeight(1)
+  for (let ix = 0; ix <= nx; ix++) {
+    line(pad.l + ix * scale, pad.t,
+      pad.l + ix * scale, pad.t + board_height)
+  }
+  for (let iy = 0; iy <= ny; iy++) {
+    line(pad.l, pad.t + iy * scale,
+      pad.l + board_width, pad.t + iy * scale)
+  }
+  // draw wind effect
+  noStroke()
+  let windtile = scale * 0.25 + 0.33
   let tvary = (sin(t * 0.005) + 1.0) * 0.5
-  let x,y,nscale,z
-  for (let iy = 0.0; iy < ny; iy += 0.5) {
-    for (let ix = 0.0; ix < nx; ix += 0.5) {
+  let x, y, nscale, z
+  for (let iy = 0.0; iy < ny; iy += 0.25) {
+    for (let ix = 0.0; ix < nx; ix += 0.25) {
       nscale = 10.0 * noise(iy / ny, t * 0.1)
       z =
         Math.sin(nscale * ix / nx - t * 1.0) *
@@ -349,7 +362,7 @@ function drawMap(t) {
       z = (z + 1.0) * 0.5
       z = Math.pow(z, 6)
       if (z < 0.02) continue
-      ground2_c.setAlpha(z*100)
+      ground2_c.setAlpha(z * 100)
       fill(ground2_c)
       x = pad.l + ix * scale
       y = pad.t + iy * scale
@@ -411,19 +424,6 @@ function drawMap(t) {
     }
   }
   pop()
-  // draw grid
-  /*
-  stroke(color(0, 0, 0, 5))
-  strokeWeight(1)
-  for (let ix = 0; ix <= nx; ix++) {
-    line(pad.l + ix * scale, pad.t,
-      pad.l + ix * scale, pad.t + board_height)
-  }
-  for (let iy = 0; iy <= ny; iy++) {
-    line(pad.l, pad.t + iy * scale,
-      pad.l + board_width, pad.t + iy * scale)
-  }
-  */
 }
 
 // GENERICS
@@ -485,6 +485,7 @@ function keyPressed() {
 
 let chat_box
 let chat_log
+let chat_btn
 
 function addToChatLog(content) {
   chat_log.html(content + chat_log.html())
@@ -493,25 +494,29 @@ function addToChatLog(content) {
 function initChat() {
   chat_box = createInput()
   chat_box.id("chat-box")
+  chat_btn = createButton("chat")
+  chat_btn.id("chat-btn")
   chat_log = createDiv()
   chat_log.id("chat-log")
-  document.getElementById("chat-box").addEventListener('change',
-    (event) => {
-      let txt = chat_box.value()
-      if (txt.trim().length > 0) {
-        txt = '<span style="background:' + team_color[curr_team] + '">[' + curr_team + ']</span> ' + nick + ': ' + txt
-        let msg = {
-          type: "chat",
-          text: txt
-        }
-        if (is_host) {
-          addToChatLog('<p class="mychat">' + msg.text + '</p>')
-        }
-        for (const conn of peer_conns)
-          conn.send(msg)
-        chat_box.value("")
-      }
-    })
+  document.getElementById("chat-box").addEventListener('change', chatted)
+  document.getElementById("chat-btn").addEventListener('click', chatted)
+}
+
+function chatted(e) {
+  let txt = chat_box.value()
+  if (txt.trim().length > 0) {
+    txt = '<span style="background:' + team_color[curr_team] + '">[' + curr_team + ']</span> ' + nick + ': ' + txt
+    let msg = {
+      type: "chat",
+      text: txt
+    }
+    if (is_host) {
+      addToChatLog('<p class="mychat">' + msg.text + '</p>')
+    }
+    for (const conn of peer_conns)
+      conn.send(msg)
+    chat_box.value("")
+  }
 }
 
 function recvMsg(msg) {
@@ -533,7 +538,7 @@ function recvMsg(msg) {
     if (is_host) {
       // rebroadcast
       for (const conn of peer_conns)
-        conn.send(msg)
+        conn.send({ type: "chat", text: msg.text })
     }
   }
   if (msg.type == "turndone") {
@@ -920,6 +925,7 @@ function draw_plan() {
     strokeWeight(3)
     for (const agent of players[opp].agents) {
       if (agent.dead) continue
+      if (plan_step == 0) continue
       let xi, yi
       [xi, yi] = agent.at
       let d = plan_step + 0.5
