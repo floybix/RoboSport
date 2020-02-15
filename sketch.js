@@ -17,8 +17,10 @@ const starting_health = 4
 const bomb_damage = 3
 const bomb_range = 5
 const bomb_radius = 1
-const ground_color = "#996b4a" //"#2f8136"
+const ground_color = "#2f8136" //  "#996b4a"
+const ground2_color = "darkgreen"
 const wall_color = "#867e7f"
+const wall_stroke = "#444444"
 const bg_color = "darkslategrey"
 const team_keys = ["A", "B", "C", "D"]
 const team_color = {
@@ -46,14 +48,13 @@ let n_players
 let mode = MODE_CONFIG
 let turn_number = 1
 let curr_team = team_keys[0]
-// map is a 2d array. elements are like {terrain: "wall", tiles: [coord1,...]} (see below)
+// map is a 2d array. elements are like {terrain: "wall"}
 // terrain is null for open ground
 let the_map = []
 let players = {}
 let next_players = {}
 let scale, board_width, board_height
 let sounds = {}
-
 
 let spritesheets
 let spritesize = 64
@@ -71,7 +72,6 @@ function preload() {
     C: loadImage("assets/guardYellow64.png"),
     D: loadImage("assets/guardWhite64.png")
   }
-  tilesheet = loadImage("assets/bricks-v5.png")
   soundFormats('mp3', 'ogg')
   sounds.hit = loadSound("assets/476740_shot.mp3")
   sounds.bomb = loadSound("assets/110113_bomb.mp3")
@@ -126,7 +126,7 @@ function restart(np) {
   n_players = np
   turn_number = 1
   the_map = generateMap()
-  calculateTiles(the_map)
+  calculateAdj(the_map)
   players = {}
   for (let i = 0; i < n_players; i++) {
     let team = team_keys[i]
@@ -166,7 +166,6 @@ function isWall(the_map, ix, iy) {
   let it = the_map[ix][iy]
   return it && (it.terrain == "wall")
 }
-
 
 function addToWall(m, ix, iy, n, type) {
   m[ix][iy] = { terrain: type }
@@ -213,6 +212,32 @@ function generateMap() {
   return (m)
 }
 
+function calculateAdj(m) {
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      let it = m[ix][iy]
+      if (!isWall(m, ix, iy)) continue
+      it = it || {}
+      let We, No, Ea, So
+      if (ix > 0)
+        We = isWall(m, ix - 1, iy)
+      if (iy > 0)
+        No = isWall(m, ix, iy - 1)
+      if (ix < nx - 1)
+        Ea = isWall(m, ix + 1, iy)
+      if (iy < ny - 1)
+        So = isWall(m, ix, iy + 1)
+      it.west = We
+      it.north = No
+      it.east = Ea
+      it.south = So
+      if (((ix > 0) && (iy > 0) && (ix < nx - 1) && (iy < ny - 1)) == false)
+        continue
+      it.sw = isWall(m, ix - 1, iy + 1)
+      it.se = isWall(m, ix + 1, iy + 1)
+    }
+  }
+}
 
 function xy_to_grid(x, y) {
   let ix = floor((x - pad.l) / scale)
@@ -302,17 +327,88 @@ function drawPreBombAction(at) {
   pop()
 }
 
-function drawMap() {
+function drawMap(t) {
   background(bg_color);
-  stroke("black")
-  strokeWeight(1)
+  // draw grass with wind effect
   noStroke()
-  fill(ground_color)
+  let ground_c = color(ground_color)
+  let ground2_c = color(ground2_color)
   rect(pad.l, pad.t, board_width, board_height)
+  let tvary = (sin(t * 0.005) + 1.0) * 0.5
+  for (let iy = 0.0; iy < ny; iy += 0.5) {
+    for (let ix = 0.0; ix < nx; ix += 0.5) {
+      let x = pad.l + ix * scale
+      let y = pad.t + iy * scale
+      let nscale = 10.0 * noise(iy / ny, t * 0.1)
+      let z =
+        sin(nscale * ix / nx - t * 1.0) *
+        sin(nscale * iy / ny - tvary)
+      z = (z + 1.0) * 0.5
+      z = 1.0 - pow(z, 4)
+      let zcol = lerpColor(ground_c, ground2_c, z)
+      fill(zcol)
+      rect(x, y, scale / 2 + 1, scale / 2 + 1)
+    }
+  }
   // draw terrain
-  drawTerrain(the_map, pad, scale)
+  push()
+  rectMode(CORNERS)
+  let wall_c = color(wall_color)
+  let wall2_c = lerpColor(wall_c, color("black"), 0.5)
+  stroke(wall_stroke)
+  strokeWeight(2)
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      let it = the_map[ix][iy]
+      if (!it) continue
+      if (!isWall(the_map, ix, iy)) continue
+      let z = noise(ix, iy)
+      let zcol = lerpColor(wall_c, wall2_c, z)
+      fill(zcol)
+      let x = pxX(ix)
+      let y = pxY(iy)
+      if (it.sw && (!it.south && !it.west)) {
+        push()
+        translate(x, y)
+        shearY(-PI / 4.0);
+        rect(-scale, -scale / 4, 0, scale / 4)
+        pop()
+      }
+      if (it.se && (!it.south && !it.east)) {
+        push()
+        translate(x, y)
+        shearY(PI / 4.0);
+        rect(0, -scale / 4, scale, scale / 4)
+        pop()
+      }
+      if (it.east || it.west) {
+        let x0 = x - scale / 4
+        let x1 = x + scale / 4
+        if (it.west) x0 = x - scale / 2
+        if (it.east) x1 = x + scale / 2
+        rect(x0, y - scale / 4, x1, y + scale / 4)
+      }
+      if (it.south || it.north) {
+        let y0 = y - scale / 4
+        let y1 = y + scale / 4
+        if (it.north) y0 = y - scale / 2
+        if (it.south) y1 = y + scale / 2
+        rect(x - scale / 4, y0, x + scale / 4, y1)
+      }
+      if ((it.east || it.west || it.south || it.north) == false) {
+        let x0 = x - scale / 2
+        let x1 = x + scale / 2
+        let y0 = y - scale / 2
+        let y1 = y + scale / 2
+        rect(x0, y0, x1, y1)
+      }
+    }
+  }
+  pop()
   // draw grid
+  /*
   stroke(color(0, 0, 0, 5))
+  strokeWeight(1)
   for (let ix = 0; ix <= nx; ix++) {
     line(pad.l + ix * scale, pad.t,
       pad.l + ix * scale, pad.t + board_height)
@@ -321,6 +417,7 @@ function drawMap() {
     line(pad.l, pad.t + iy * scale,
       pad.l + board_width, pad.t + iy * scale)
   }
+  */
 }
 
 // GENERICS
@@ -660,7 +757,7 @@ function mouseClicked_config() {
 // WAIT_PLAN
 
 function draw_wait_plan() {
-  drawMap()
+  drawMap(0)
   // draw players
   stroke("black")
   for (const team of Object.keys(players)) {
@@ -798,7 +895,7 @@ function line_of_sight(source, target) {
 }
 
 function draw_plan() {
-  drawMap()
+  drawMap(millis() / 1000)
   // draw opponents
   for (const opp of Object.keys(players)) {
     if (opp == curr_team) continue
@@ -1207,7 +1304,7 @@ function keyPressed_plan() {
 // WAIT_GO
 
 function draw_wait_go() {
-  drawMap()
+  drawMap(0)
   // draw players
   stroke("black")
   for (const team of Object.keys(players)) {
@@ -1437,7 +1534,7 @@ function drawHaHa(at, z) {
 }
 
 function draw_go() {
-  drawMap()
+  drawMap(go_step)
   let t = floor(go_step)
   let tn = floor(go_step) + 1
   let z = go_step - t
