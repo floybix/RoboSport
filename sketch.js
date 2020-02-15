@@ -54,54 +54,6 @@ let next_players = {}
 let scale, board_width, board_height
 let sounds = {}
 
-let tilesheet
-let tilesize = 32 // px
-// tile index offsets to look up terrain type in sheet
-let tile_origin = { wall: [15, 0], rough: [26, 14] }
-//let tile_origin = { wall: [21, 32], rough: [27, 0] }
-let filled_tiles = [[1, 3], [0, 5], [1, 5], [2, 5]]
-// look up by terrain transitions along edges:
-// W,N,E,S in order encoded as binary
-// 
-// (for each grass tile, X represents wall)
-// X _ _
-// X _ _ is 0b0001 (1)
-// X _ _
-//
-// X X X
-// _ _ _ is 0b0010 (2)
-// _ _ _
-//
-// X X X
-// X _ _ is 0b0011 (3)
-// X _ _
-//
-// the value looked up is *an array of* coords [x,y] into the tilemap.
-// for tiles to overlay wall onto grass.
-// usually only one, but if multiple coords, all tiles are drawn.
-let tile_edges =
-  [[], [[2, 3]], [[1, 4]], [[1, 0]],
-  [[0, 3]], [[0, 3], [2, 3]], [[2, 0]], [[2, 0], [2, 3]],
-  [[1, 2]], [[1, 1]], [[1, 2], [1, 4]], [[1, 0], [1, 2]],
-  [[2, 1]], [[2, 1], [2, 3]], [[2, 0], [1, 2]], [[2, 0], [1, 1]]]
-// similarly, for corners in order NW,NE,SE,SW
-//
-// X _ _
-// _ _ _ is 0b0001 (1)
-// _ _ _
-//
-// _ _ X
-// _ _ _ is 0b0010 (2)
-// _ _ _
-//
-// X _ X
-// _ _ _ is 0b0011 (3)
-// _ _ _
-let tile_corners =
-  [[], [[2, 4]], [[0, 4]], [[2, 4], [0, 4]],
-  [[0, 2]], [[0, 2], [2, 4]], [[0, 2], [0, 4]], [[0, 2], [2, 4], [0, 4]],
-  [[2, 2]], [[2, 2], [2, 4]], [[2, 2], [0, 4]], [[2, 2], [2, 4], [0, 4]],
-  [[2, 2], [0, 2]], [[2, 2], [2, 4], [0, 2]], [[2, 2], [0, 4], [0, 2]], [[2, 2], [2, 4], [0, 4], [0, 2]]]
 
 let spritesheets
 let spritesize = 64
@@ -113,14 +65,13 @@ let spritey = {
 }
 
 function preload() {
-  tilesheet = loadImage("assets/bricks-v5.png")
   spritesheets = {
     A: loadImage("assets/guardBlue64.png"),
     B: loadImage("assets/guardPurple64.png"),
     C: loadImage("assets/guardYellow64.png"),
     D: loadImage("assets/guardWhite64.png")
   }
-  //tilesheet = loadImage("assets/terrain-v7.png")
+  tilesheet = loadImage("assets/bricks-v5.png")
   soundFormats('mp3', 'ogg')
   sounds.hit = loadSound("assets/476740_shot.mp3")
   sounds.bomb = loadSound("assets/110113_bomb.mp3")
@@ -216,10 +167,6 @@ function isWall(the_map, ix, iy) {
   return it && (it.terrain == "wall")
 }
 
-function isTerrain(the_map, ix, iy, type) {
-  let it = the_map[ix][iy]
-  return it && (it.terrain == type)
-}
 
 function addToWall(m, ix, iy, n, type) {
   m[ix][iy] = { terrain: type }
@@ -266,58 +213,6 @@ function generateMap() {
   return (m)
 }
 
-function calculateTiles(m) {
-  let addvec = function ([x1, y1], [x2, y2]) {
-    return [x1 + x2, y1 + y2]
-  }
-  let wall_origin = tile_origin["wall"]
-  for (let ix = 0; ix < nx; ix++) {
-    m[ix][0].tiles = [addvec(random(filled_tiles), wall_origin)]
-    m[ix][ny - 1].tiles = [addvec(random(filled_tiles), wall_origin)]
-  }
-  for (let iy = 0; iy < ny; iy++) {
-    m[0][iy].tiles = [addvec(random(filled_tiles), wall_origin)]
-    m[nx - 1][iy].tiles = [addvec(random(filled_tiles), wall_origin)]
-  }
-  for (const type of ["rough", "wall"]) {
-    let origin = tile_origin[type]
-    for (let ix = 1; ix < nx - 1; ix++) {
-      for (let iy = 1; iy < ny - 1; iy++) {
-        let it = m[ix][iy]
-        it = it || {}
-        it.tiles = it.tiles || []
-        if (it.terrain == type) {
-          it.tiles.push(addvec(random(filled_tiles), origin))
-          m[ix][iy] = it
-          continue
-        }
-        let We = isTerrain(m, ix - 1, iy, type)
-        let No = isTerrain(m, ix, iy - 1, type)
-        let Ea = isTerrain(m, ix + 1, iy, type)
-        let So = isTerrain(m, ix, iy + 1, type)
-        let edge_seq = [We, No, Ea, So]
-        let edge_index = 0
-        for (let i = 0; i < 4; i++) {
-          edge_index += edge_seq[i] * pow(2, i)
-        }
-        let Nw = isTerrain(m, ix - 1, iy - 1, type)
-        let Ne = isTerrain(m, ix + 1, iy - 1, type)
-        let Se = isTerrain(m, ix + 1, iy + 1, type)
-        let Sw = isTerrain(m, ix - 1, iy + 1, type)
-        let corn_seq = [Nw, Ne, Se, Sw]
-        let corn_index = 0
-        for (let i = 0; i < 4; i++) {
-          corn_index += corn_seq[i] * pow(2, i)
-        }
-        let rel_tiles = tile_edges[edge_index].concat(tile_corners[corn_index])
-        for (const rel_coord of rel_tiles) {
-          it.tiles.push(addvec(rel_coord, origin))
-        }
-        m[ix][iy] = it
-      }
-    }
-  }
-}
 
 function xy_to_grid(x, y) {
   let ix = floor((x - pad.l) / scale)
@@ -415,18 +310,7 @@ function drawMap() {
   fill(ground_color)
   rect(pad.l, pad.t, board_width, board_height)
   // draw terrain
-  for (let ix = 0; ix < nx; ix++) {
-    for (let iy = 0; iy < ny; iy++) {
-      let it = the_map[ix][iy]
-      if (!it) continue
-      for (const [tile_ix, tile_iy] of it.tiles) {
-        let sx = tile_ix * tilesize
-        let sy = tile_iy * tilesize
-        image(tilesheet, pad.l + ix * scale, pad.t + iy * scale,
-          scale, scale, sx, sy, tilesize, tilesize)
-      }
-    }
-  }
+  drawTerrain(the_map, pad, scale)
   // draw grid
   stroke(color(0, 0, 0, 5))
   for (let ix = 0; ix <= nx; ix++) {
