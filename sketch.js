@@ -520,6 +520,7 @@ function chatted(e) {
 }
 
 function recvMsg(msg) {
+  console.log(msg)
   if (msg.type == "hello") {
     curr_team = msg.curr_team
     removeElements()
@@ -574,6 +575,12 @@ function checkAllDone() {
 
 function connClosed() {
   addToChatLog('<p class="syschat">' + "Connection closed." + '</p>')
+}
+
+function connError(err) {
+  console.log(err)
+  addToChatLog('<p class="syschat">' + "Connection error" + '</p>')
+  addToChatLog('<p class="syschat"><pre>' + JSON.stringify(err) + '</pre></p>')
 }
 
 // CONFIG
@@ -665,7 +672,7 @@ function setup_remote_multi() {
   table.child(connbutt)
   connbutt.mousePressed(function () {
     connbutt.hide()
-    peer = new Peer()
+    peer = new Peer(null, { debug: 2 })
     peer.on('open', function (id) {
       my_peer_id = id
       if (is_host) {
@@ -720,6 +727,7 @@ function setup_remote_multi() {
               switchMode(MODE_WAIT_PLAN)
             })
           })
+          conn.on('error', connError)
         })
       } else {
         // client - connect to a given host id
@@ -733,7 +741,8 @@ function setup_remote_multi() {
           joinbutt.hide()
           remote_peer_id = host_id_input.value()
           nick = nick_input.value()
-          conn = peer.connect(remote_peer_id, { label: nick })
+          conn = peer.connect(remote_peer_id,
+            { label: nick, reliable: true, serialization: "binary-utf8" })
           peer_conns.push(conn)
           conn.on('open', function () {
             // we're good to go
@@ -741,6 +750,7 @@ function setup_remote_multi() {
             conn.on('data', recvMsg)
             conn.on('close', connClosed)
           })
+          conn.on('error', connError)
         })
       }
     })
