@@ -9,6 +9,7 @@ let peer = null
 let is_host = true
 let peer_conns = []
 
+// NOTE: update README.md if parameters are changed
 const nx = 20
 const ny = 20
 const pad = { l: 100, r: 20, t: 70, b: 50 }
