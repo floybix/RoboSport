@@ -1205,9 +1205,11 @@ function mouseClicked_plan() {
 }
 
 function switchPlanAgent(ai) {
+  let agent = players[curr_team].agents[ai]
+  if (agent.dead) // cancel switch
+    return
   plan_agent = ai
-  actions = players[curr_team].agents[ai].actions
-  while ((plan_step > 0) && !actions[plan_step - 1]) {
+  while ((plan_step > 0) && !agent.actions[plan_step - 1]) {
     plan_step -= 1
   }
 }
