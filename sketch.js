@@ -459,6 +459,7 @@ function draw() {
 }
 
 function mouseReleased() {
+  if ((mouseX <= 0) || (mouseY <= 0) || (mouseX >= width) || (mouseY >= height)) return true
   if (mode == MODE_CONFIG) {
     mouseClicked_config()
   } else if (mode == MODE_WAIT_PLAN) {
@@ -625,7 +626,7 @@ function init_config() {
   // set up buttons
   let nb = config_buttons.length
   for (let i = 0; i < config_buttons.length; i++) {
-    b = config_buttons[i]
+    let b = config_buttons[i]
     b.width = 140
     b.height = 30
     b.y = height * 0.3 + i * 2 * b.height
@@ -823,6 +824,8 @@ let plan_buttons = [{
   label: act_symbols[ACT_BOMB] + " bomb"
 }]
 
+let plan_done_button = { label: "🆗 done" }
+
 let plan_step
 let plan_agent
 let plan_mode
@@ -842,12 +845,17 @@ function init_plan() {
   generate_plan_graph()
   // set up buttons
   for (let i = 0; i < plan_buttons.length; i++) {
-    b = plan_buttons[i]
+    let b = plan_buttons[i]
     b.width = pad.l - 16
     b.height = 30
     b.y = pad.t + 50 + i * b.height * 2
     b.x = 8
   }
+  let b = plan_buttons[plan_buttons.length - 1]
+  plan_done_button.x = b.x
+  plan_done_button.y = b.y + b.height + 60
+  plan_done_button.width = b.width
+  plan_done_button.height = 50
 }
 
 function generate_plan_graph() {
@@ -1056,29 +1064,31 @@ function draw_plan() {
   draw_timeline(agent)
   draw_plan_controls()
   // draw status messages
-  let curr_done = false
-  let all_done = true
-  for (let ai = 0; ai < n_agents; ai++) {
-    let agent = players[curr_team].agents[ai]
-    if (agent.dead) continue
-    let idone = players[curr_team].agents[ai].actions[n_actions - 1]
-    if (ai == plan_agent) curr_done = idone
-    all_done = all_done && idone
-  }
   let y = height - pad.b / 2
   textAlign(CENTER, CENTER)
   textSize(16)
   fill("yellow")
   noStroke()
   let msg = ""
-  if (all_done) {
-    msg = "all agents fully programmed. ✅ click here to end turn."
-  } else if (curr_done) {
-    msg = "this agent fully programmed. (others remaining)"
+  if (areAllAgentsFullyProgrammed()) {
+    msg = "all robots fully programmed."
+  } else if (agent.actions[n_actions - 1]) {
+    msg = "this robot fully programmed. (others remaining)"
   } else {
     msg = "choose actions."
   }
   text(msg, width / 2, y)
+}
+
+function areAllAgentsFullyProgrammed() {
+  let all_done = true
+  for (let ai = 0; ai < n_agents; ai++) {
+    let agent = players[curr_team].agents[ai]
+    if (agent.dead) continue
+    let idone = agent.actions[n_actions - 1]
+    all_done = all_done && idone
+  }
+  return all_done
 }
 
 function draw_timeline(agent) {
@@ -1139,16 +1149,26 @@ function draw_plan_controls() {
     }
     text(label, b.x + b.width / 2, b.y + b.height / 2)
   }
+  // done button
+  if (areAllAgentsFullyProgrammed()) {
+    textSize(16)
+    fill("white")
+    noStroke()
+    let b = plan_done_button
+    rect(b.x, b.y, b.width, b.height)
+    fill("black")
+    text(b.label, b.x + b.width / 2, b.y + b.height / 2)
+  }
   // note
   fill("white")
   noStroke()
   textAlign(LEFT, BASELINE)
   textSize(12)
-  text("Switch agent:\n Tab / click on it", 5, height - pad.b - 50)
+  text("Switch robot:\n Tab / click on it", 5, height - pad.b - 50)
   // title
   let agent = players[curr_team].agents[plan_agent]
   textSize(16)
-  text("Player " + curr_team + "\n→ agent " + (plan_agent + 1) + "\n (health " + agent.health + ")", 5, 20)
+  text("Player " + curr_team + "\n→ robot " + (plan_agent + 1) + "\n (health " + agent.health + ")", 5, 20)
 }
 
 function mouseClicked_plan() {
@@ -1159,6 +1179,14 @@ function mouseClicked_plan() {
       if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
         (b.y < mouseY) && (mouseY < b.y + b.height)) {
         plan_mode = b.mode
+      }
+    }
+    // done button
+    if (areAllAgentsFullyProgrammed()) {
+      let b = plan_done_button
+      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+        (b.y < mouseY) && (mouseY < b.y + b.height)) {
+        turn_done_clicked()
       }
     }
   } else if (mouseX > width - pad.r) {
@@ -1177,16 +1205,6 @@ function mouseClicked_plan() {
     }
   } else if (mouseY > height - pad.b) {
     // bottom panel
-    let all_done = true
-    for (let ai = 0; ai < n_agents; ai++) {
-      let agent = players[curr_team].agents[ai]
-      if (agent.dead) continue
-      let idone = players[curr_team].agents[ai].actions[n_actions - 1]
-      all_done = all_done && idone
-    }
-    if (all_done) {
-      turn_done_clicked()
-    }
   } else {
     // board
     let targ = xy_to_grid(mouseX, mouseY)
@@ -1366,10 +1384,34 @@ let go_paused
 let go_up_to = n_actions + 0.9
 let go_acts_per_sec = 1.0
 
+let go_buttons = [{
+  what: "play",
+  label: "⏯ play"
+},
+{
+  what: "step-fwd",
+  label: "⏭ step"
+},
+{
+  what: "step-back",
+  label: "⏮️ back"
+},
+{
+  what: "done",
+  label: "🆗 done"
+}]
+
 function init_go() {
   go_step = 0.01
   go_paused = true
-  console.log(players)
+  // set up buttons
+  for (let i = 0; i < go_buttons.length; i++) {
+    let b = go_buttons[i]
+    b.width = pad.l - 16
+    b.height = 50
+    b.y = pad.t + 50 + i * b.height * 2
+    b.x = 8
+  }
   resolve_actions(players)
   console.log("post-resolve")
   console.log(players)
@@ -1656,7 +1698,8 @@ function draw_go() {
     }
     go_step = min(go_step + go_dt, go_up_to)
   }
-  drawGoTimeline()
+  draw_go_timeline()
+  draw_go_controls()
   let y = height - pad.b / 2
   textAlign(CENTER, CENTER)
   textSize(16)
@@ -1664,14 +1707,14 @@ function draw_go() {
   noStroke()
   let msg = ""
   if (go_step >= go_up_to) {
-    msg = "finished watching? ✅ click here for next turn."
+    msg = "finished watching? continue to next turn."
   } else {
     msg = "space = play/pause. arrow keys = step."
   }
   text(msg, width / 2, y)
 }
 
-function drawGoTimeline() {
+function draw_go_timeline() {
   stroke("white")
   strokeWeight(2)
   line(pad.l, pad.t / 2, width - pad.r, pad.t / 2)
@@ -1684,9 +1727,44 @@ function drawGoTimeline() {
   text("Turn " + turn_number, pad.l / 2, pad.t / 2)
 }
 
+function draw_go_controls() {
+  textAlign(CENTER, CENTER)
+  textSize(16)
+  noStroke()
+  for (const b of go_buttons) {
+    fill("white")
+    rect(b.x, b.y, b.width, b.height)
+    fill("black")
+    label = b.label
+    text(label, b.x + b.width / 2, b.y + b.height / 2)
+  }
+}
+
 function mouseClicked_go() {
   if (mouseX < pad.l) {
     // left sidebar
+    for (const b of go_buttons) {
+      if ((b.x < mouseX) && (mouseX < b.x + b.width) &&
+        (b.y < mouseY) && (mouseY < b.y + b.height)) {
+        if (b.what == "play") {
+          if (go_step == go_up_to) go_step = 0
+          go_paused = !go_paused
+          if (go_paused) sounds.scan.stop()
+        }
+        if (b.what == "step-fwd") {
+          if (go_step == go_up_to) return
+          go_step = min(floor(go_step) + 1, n_actions)
+        }
+        if (b.what == "step-back") {
+          go_paused = true
+          go_step = max(0, ceil(go_step) - 1)
+        }
+        if (b.what == "done") {
+          sounds.scan.stop()
+          go_done()
+        }
+      }
+    }
   } else if (mouseX > width - pad.r) {
     // right sidebar
   } else if (mouseY < pad.t) {
@@ -1696,11 +1774,6 @@ function mouseClicked_go() {
     go_step = constrain(go_step, 0, go_up_to)
   } else if (mouseY > height - pad.b) {
     // bottom panel
-    if (go_step >= go_up_to) {
-      go_done()
-    } else {
-      go_paused = !go_paused
-    }
   }
 }
 
@@ -1738,10 +1811,11 @@ function keyPressed_go() {
     go_step = max(0, ceil(go_step) - 1)
   }
   if (key == "ArrowRight") {
-    if (go_step == n_actions) return
+    if (go_step == go_up_to) return
     go_step = min(floor(go_step) + 1, n_actions)
   }
   if (key == " ") {
+    if (go_step == go_up_to) go_step = 0
     go_paused = !go_paused
     if (go_paused) sounds.scan.stop()
   }
@@ -1767,7 +1841,7 @@ function init_end() {
   if ((multiplayer == MULTI_REMOTE) && !is_host)
     end_buttons = []
   for (let i = 0; i < end_buttons.length; i++) {
-    b = end_buttons[i]
+    let b = end_buttons[i]
     b.width = 140
     b.height = 30
     b.y = height / 2 + i * 2 * b.height
