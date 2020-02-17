@@ -355,8 +355,8 @@ function drawMap(t) {
   let tvary = (sin(t * 0.005) + 1.0) * 0.5
   let x, y, nscale, z
   for (let iy = 0.0; iy < ny; iy += 0.25) {
+    nscale = 10.0 * noise(iy / ny, t * 0.1)
     for (let ix = 0.0; ix < nx; ix += 0.25) {
-      nscale = 10.0 * noise(iy / ny, t * 0.1)
       z =
         Math.sin(nscale * ix / nx - t * 1.0) *
         Math.sin(nscale * iy / ny - tvary)
