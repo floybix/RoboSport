@@ -3,11 +3,11 @@ p5.disableFriendlyErrors = true
 
 const MULTI_HOTSEAT = 1
 const MULTI_REMOTE = 2
-let multiplayer = null
-let nick = "Anon"
-let peer = null
-let is_host = true
-let peer_conns = []
+var multiplayer = null
+var nick = "Anon"
+var peer = null
+var is_host = true
+var peer_conns = []
 
 // NOTE: update README.md if parameters are changed
 const nx = 20
@@ -47,23 +47,23 @@ const ACT_DIE = 9
 const act_symbols = ["?", "👣", "🔊", "💣", "🔜"]
 // actions are like {action: ACT_MOVE, target: [3,10]}
 
-let n_players
-let mode = MODE_CONFIG
-let turn_number = 1
-let curr_team = team_keys[0]
+var n_players
+var mode = MODE_CONFIG
+var turn_number = 1
+var curr_team = team_keys[0]
 // map is a 2d array. elements are like {terrain: "wall"}
 // terrain is null for open ground
-let the_map = []
-let players = {}
-let next_players = {}
-let scale, board_width, board_height
-let sounds = {}
+var the_map = []
+var players = {}
+var next_players = {}
+var scale, board_width, board_height
+var sounds = {}
 
-let spritesheets
-let spritesize = 64
-let spriteframes = 4
+var spritesheets
+var spritesize = 64
+var spriteframes = 4
 // gives the y index into spritesheet for various poses:
-let spritey = {
+var spritey = {
   left: 0, right: 1, down: 2, up: 3,
   leftfire: 9, rightfire: 10, downfire: 6, upfire: 3
 }
@@ -485,9 +485,9 @@ function keyPressed() {
 
 // NETWORK COMMS
 
-let chat_box
-let chat_log
-let chat_btn
+var chat_box
+var chat_log
+var chat_btn
 
 function addToChatLog(content) {
   chat_log.html(content + chat_log.html())
@@ -587,7 +587,7 @@ function connError(err) {
 
 // CONFIG
 
-let config_buttons =
+var config_buttons =
   [{
     label: "hotseat (2)",
     multi: MULTI_HOTSEAT,
@@ -811,7 +811,7 @@ const PMODE_MOVE = 1
 const PMODE_SCAN = 2
 const PMODE_BOMB = 3
 
-let plan_buttons = [{
+var plan_buttons = [{
   mode: PMODE_MOVE,
   label: act_symbols[ACT_MOVE] + " move (m)"
 },
@@ -824,12 +824,12 @@ let plan_buttons = [{
   label: act_symbols[ACT_BOMB] + " bomb"
 }]
 
-let plan_done_button = { label: "🆗 done" }
+var plan_done_button = { label: "🆗 done" }
 
-let plan_step
-let plan_agent
-let plan_mode
-let plan_graph
+var plan_step
+var plan_agent
+var plan_mode
+var plan_graph
 
 function init_plan() {
   plan_step = 0
@@ -1379,12 +1379,12 @@ function mouseClicked_wait_go() {
 
 // GO
 
-let go_step
-let go_paused
-let go_up_to = n_actions + 0.9
-let go_acts_per_sec = 1.0
+var go_step
+var go_paused
+const go_up_to = n_actions + 0.9
+var go_acts_per_sec = 1.0
 
-let go_buttons = [{
+var go_buttons = [{
   what: "play",
   label: "⏯ play"
 },
@@ -1777,11 +1777,11 @@ function mouseClicked_go() {
   }
 }
 
-let winner
+var end_winner
 
 function go_done() {
   let alive_teams = {}
-  winner = ""
+  end_winner = ""
   for (const team of Object.keys(players)) {
     for (let ai = 0; ai < n_agents; ai++) {
       let agent = players[team].agents[ai]
@@ -1800,7 +1800,7 @@ function go_done() {
     turn_number++
     switchMode(MODE_WAIT_PLAN)
   } else {
-    winner = Object.keys(alive_teams)[0]
+    end_winner = Object.keys(alive_teams)[0]
     switchMode(MODE_END)
   }
 }
@@ -1830,7 +1830,7 @@ function keyPressed_go() {
 
 // END
 
-let end_buttons =
+var end_buttons =
   [{
     label: "restart",
     what: "restart"
@@ -1860,7 +1860,7 @@ function draw_end() {
   text("🏆", width / 2, height * 0.3)
   textSize(16)
   fill("yellow")
-  text(winner ? "Team " + winner : "No winner!", width / 2, height * 0.4)
+  text(end_winner ? "Team " + end_winner : "No winner!", width / 2, height * 0.4)
   for (const b of end_buttons) {
     fill(color(0, 0, 75))
     rect(b.x, b.y, b.width, b.height)
