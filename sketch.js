@@ -45,7 +45,10 @@ const ACT_BOMB = 3
 const ACT_PREBOMB = 4
 const ACT_DIE = 9
 const act_symbols = ["?", "👣", "🔊", "💣", "🔜"]
-// actions are like {action: ACT_MOVE, target: [3,10]}
+// actions are like {action: ACT_MOVE, target: [3,10], facing: "down"}
+//const facing_symbols = { up: "⬆", down: "⬇", left: "⬅", right: "➡" }
+// emoji: ↗ ↘ ↙ ↖
+const facing_symbols = { up: "↑", down: "↓", left: "←", right: "→" }
 
 var n_players
 var mode = MODE_CONFIG
@@ -1093,9 +1096,9 @@ function areAllAgentsFullyProgrammed() {
 
 function draw_timeline(agent) {
   let time_dx = board_width / (n_actions + 1)
+  let step_px = min(time_dx, pad.t / 2)
   noStroke()
   textAlign(CENTER, CENTER)
-  textSize(25)
   for (let i = 0; i <= n_actions; i++) {
     if (i == plan_step) {
       fill("yellow")
@@ -1107,7 +1110,15 @@ function draw_timeline(agent) {
     if (i > 0) {
       let act = agent.actions[i - 1]
       if (act) {
-        text(act_symbols[act.action], x + 0.5 * time_dx, pad.t / 2)
+        fill("black")
+        textSize(step_px * 0.7)
+        let atxt = act_symbols[act.action]
+        if (act.action == ACT_SCAN) {
+          textSize(step_px)
+          atxt += facing_symbols[act.facing]
+          textSize(step_px * 0.5)
+        }
+        text(atxt, x + time_dx / 2, pad.t / 2)
       }
     }
   }

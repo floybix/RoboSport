@@ -1,6 +1,5 @@
 # to do
 
-* show scan direction in plan timeline
 * to test: multi (remote), one player defeated but more continue
 * ui mode switch with keyboard shouldn't appear in chat
 * help/tutorial
