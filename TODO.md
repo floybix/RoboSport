@@ -9,3 +9,4 @@
 * scan diagonally
 * time bomb
 * crouch
+* time limit for planning
