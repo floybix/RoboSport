@@ -642,9 +642,7 @@ function draw_config() {
   textAlign(CENTER, CENTER)
   fill("white")
   textSize(40)
-  text("RoboSport", width / 2, height * 0.15)
-  textSize(16)
-  text("a minimal clone", width / 2, height * 0.15 + 50)
+  text("mini RoboSport", width / 2, height * 0.15)
   textAlign(CENTER, CENTER)
   textSize(16)
   if (!multiplayer) {
